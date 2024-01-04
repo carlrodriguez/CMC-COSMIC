@@ -228,6 +228,11 @@ void free_arrays(void){
 	free(ave_mass_r); free(mass_r);
 	free(star); free(binary);
 
+	if(BH_LOSS_CONE){
+		gsl_integration_qaws_table_free(table_lc_porb_integral);
+		gsl_integration_workspace_free(workspace_lc_porb_integral);
+	}
+
 	/* MPI Stuff */
 	free(star_r); free(star_m); free(star_phi);
 //Probably not needed anymore

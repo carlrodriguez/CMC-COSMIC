@@ -124,8 +124,17 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	} else if (STELLAR_EVOLUTION){
 		double Rss;
 		//dprintf("cenma.m= %g, star[%li].m= %g\n", cenma.m, index, star[index].m);
-		Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad*RSUN/units.l;
-		Rss= 4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l;
+		//TODO: Carl: this had some units errors I believe...double check that this should all be 
+		//in dimmensionless code units (it was in solar radii otherwise?)
+		if (star[index].binind > 0){
+			double a = binary[star[index].binind].a;
+			double e = binary[star[index].binind].e;
+			Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*a*(1+e);
+			//TODO: quick and cheap check for apoMBH of binary
+		} else {
+			Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
+		}
+		Rss=0;//TODO: no idea wtf this is... 4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l;
 		Rdisr= MAX(Rdisr, Rss);
 	} else {
 		Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
@@ -247,34 +256,29 @@ double calc_P_orb(long index)
 	//double Porbtmp;
 	orbit_rs_t orbit_rs;
 	calc_p_orb_params_t params;
-	gsl_integration_workspace *w;
-	gsl_integration_qaws_table *tab;
 	gsl_function F;
-    struct Interval star_interval;
-    int g_index;
-    g_index = get_global_idx(index);
+	struct Interval star_interval;
+	int g_index;
+	g_index = get_global_idx(index);
 
         /* default values for star_interval */
 	star_interval.min= 1;
-    star_interval.max= clus.N_MAX+1;
+	star_interval.max= clus.N_MAX+1;
 
 	E = star[index].E + MPI_PHI_S(star_r[g_index], g_index);
 	J = star[index].J;
 	
-	//dprintf("index=%ld ", index);
-
-        //if (index>80000) dprintf("Aaaaahhh index= %li\n", index);
+	/*TODO: we're doing this twice?!  Put in a flag to only compute
+	 * new orbital parameters here if we're using the loss cone*/
 	orbit_rs = calc_orbit_new(index, E, J);
-	
-	//dprintf("rp=%g ra=%g ", orbit_rs.rp, orbit_rs.ra);
 
+	/*A cheap way to compute the radial orbital period: just 
+	 * geometrically average the equivalent orbital period of a
+	 * circular orbit at pericenter and apocenter.  This works exactly
+	 * in the Keplarian case, but not for a general spherical potential*/
 	Porbapproxmin = 2.0 * PI * orbit_rs.rp / (J / orbit_rs.rp);
 	Porbapproxmax = 2.0 * PI * orbit_rs.ra / (J / orbit_rs.ra);
 	Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
-
-	/* Return the approximate value of the radial period.  If this is commented out
-	   the radial period will be calculated properly. */
-	//return(Porbapprox);
 
         if (orbit_rs.ra-orbit_rs.rp< CIRC_PERIOD_THRESHOLD) {
           dprintf("Orbit is considered circular for period calculation.\n");
@@ -289,8 +293,6 @@ double calc_P_orb(long index)
 		   any difference for the BH loss cone stuff, since the orbit is circular. */
 		return(2.0 * PI * star_r[g_index] / star[index].vt);
 	} else {
-		w = gsl_integration_workspace_alloc(1000);
-		tab = gsl_integration_qaws_table_alloc(-0.5, -0.5, 0.0, 0.0);
 
 		params.E = E;
 		params.J = J;
@@ -355,10 +357,15 @@ double calc_P_orb(long index)
 			//dprintf("\tFast: Porb=%g Porb/Porbapprox=%g intervals=%d\n", Porb, Porb/Porbapprox, w->size);
 		}
 
+		/*TODO: wait, are we double regularizing this?  We've already set the regularization weights
+		 * when allocating the coefficients for the Gauss-Chebyshev interpolants
+		 *
+		 * Sigh, double check what this function is actually doing*/
 		if (1) { /* use Gauss-Chebyshev for factor of ~few speedup over standard method */
 			//Porbtmp = Porb;
 			F.function = &calc_p_orb_gc;
-			status = gsl_integration_qaws(&F, orbit_rs.rp, orbit_rs.ra, tab, 1.0e-3, 1.0e-3, 1000, w, &Porb, &error);
+			status = gsl_integration_qaws(&F, orbit_rs.rp, orbit_rs.ra, table_lc_porb_integral,
+				       	1.0e-3, 1.0e-3, 1000, workspace_lc_porb_integral, &Porb, &error);
 			//dprintf("Porb=%g Porb/Porbtmp=%g Porb/Porbapprox=%g intervals=%d\n", 
 			//	Porb, Porb/Porbtmp, Porb/Porbapprox, w->size);
 		}
@@ -366,14 +373,12 @@ double calc_P_orb(long index)
 		// Print error if there's a problem with the integration, and return Porbapprox
 		if (status) {
 			eprintf("gsl_integration_qa[g,w]s failed (gsl_errno=%d, index=%d, g_index=%d, orbit_rs.rp=%e, orbit_rs.ra=%e); check cmc_bhlosscone.c for [g,w] routine; returning Porbapprox=%e\n", status, index, g_index, orbit_rs.rp, orbit_rs.ra, Porbapprox);
-			return(Porbapprox);
+			Porb = Porbapprox;
 		}
 
 		// Reset to previous error handler
 		gsl_set_error_handler(old_handler);
 		
-		gsl_integration_qaws_table_free(tab);
-		gsl_integration_workspace_free(w);
 		return(Porb);
 	}
 }

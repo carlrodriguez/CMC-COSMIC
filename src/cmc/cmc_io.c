@@ -2082,6 +2082,11 @@ if(myid==0)
 	for(i=0; i<NO_MASS_BINS; i++){
 		multi_mass_r[i] = (double *) malloc(MASS_PC_COUNT * sizeof(double));
 	}
+	/* only need to allocate space for the porb integrators if we're considering a loss cone*/
+	if(BH_LOSS_CONE){
+		workspace_lc_porb_integral = gsl_integration_workspace_alloc(1000);
+		table_lc_porb_integral = gsl_integration_qaws_table_alloc(-0.5, -0.5, 0.0, 0.0);
+	}
 	
 	/*======= Reading values for the Lagrange radii =======*/
 	curr_mass = (char *) strtok(MASS_PC, ",; ");

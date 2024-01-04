@@ -347,6 +347,12 @@ _EXTERN_ int CALCULATE10;
 * cone by Trel*BH_LC_FDT/dt
 */
 _EXTERN_ double BH_LC_FDT;
+/**
+* @brief
+* gsl workspace for integrating porb to calculat loss cone entry 
+*/
+_EXTERN_ gsl_integration_workspace workspace_lc_porb_integral;
+_EXTERN_ gsl_integration_qaws_table table_lc_porb_integral;
 _EXTERN_ long AVEKERNEL;
 _EXTERN_ long MIN_CHUNK_SIZE;
 _EXTERN_ long BH_AVEKERNEL;

@@ -1787,6 +1787,8 @@ void post_sort_comm();
 void findIndices( long N, int blkSize, int i, int* begin, int* end );
 void pulsar_write(long k, double kick);
 void write_morepulsar(long i);
+void write_morecoll(long i);
+void write_bhlosscone(long i);
 void findLimits( long N, int blkSize );
 int findProcForIndex( int j );
 void set_rng_states();

@@ -1340,18 +1340,17 @@ if(myid==0) {
 				sscanf(values, "%i", &WRITE_PULSAR_INFO);
 				parsed.WRITE_PULSAR_INFO = 1;
 			} else if (strcmp(parameter_name, "WRITE_MOREPULSAR_INFO")== 0) {
-                                PRINT_PARSED(PARAMDOC_WRITE_MOREPULSAR_INFO);
-                                sscanf(values, "%i", &WRITE_MOREPULSAR_INFO);
-                                parsed.WRITE_MOREPULSAR_INFO = 1;
-                        } else if (strcmp(parameter_name, "WRITE_MORECOLL_INFO")== 0) {
-                                PRINT_PARSED(PARAMDOC_WRITE_MORECOLL_INFO);
-                                sscanf(values, "%i", &WRITE_MORECOLL_INFO);
-                                parsed.WRITE_MORECOLL_INFO = 1;
-						} else if (strcmp(parameter_name, "WRITE_BH_LOSSCONE_INFO")== 0) {
-                                PRINT_PARSED(PARAMDOC_WRITE_BH_LOSSCONE_INFO);
-                                sscanf(values, "%i", &WRITE_BH_LOSSCONE_INFO);
-                                parsed.WRITE_BH_LOSSCONE_INFO = 1;
-
+                PRINT_PARSED(PARAMDOC_WRITE_MOREPULSAR_INFO);
+                sscanf(values, "%i", &WRITE_MOREPULSAR_INFO);
+                parsed.WRITE_MOREPULSAR_INFO = 1;
+            } else if (strcmp(parameter_name, "WRITE_MORECOLL_INFO")== 0) {
+                PRINT_PARSED(PARAMDOC_WRITE_MORECOLL_INFO);
+                sscanf(values, "%i", &WRITE_MORECOLL_INFO);
+                parsed.WRITE_MORECOLL_INFO = 1;
+			} else if (strcmp(parameter_name, "WRITE_BH_LOSSCONE_INFO")== 0) {
+                PRINT_PARSED(PARAMDOC_WRITE_BH_LOSSCONE_INFO);
+                sscanf(values, "%i", &WRITE_BH_LOSSCONE_INFO);
+                parsed.WRITE_BH_LOSSCONE_INFO = 1;
 			} else if (strcmp(parameter_name, "CALCULATE10")== 0) {
 				PRINT_PARSED(PARAMDOC_CALCULATE10);
 				sscanf(values, "%i", &CALCULATE10);

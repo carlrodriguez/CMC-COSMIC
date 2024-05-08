@@ -715,6 +715,9 @@ void PrintParaFileOutput(void)
 	if (WRITE_BH_LOSSCONE_INFO){
         mpi_para_file_write(mpi_bhlossconefile_wrbuf, &mpi_bhlossconefile_len, &mpi_bhlossconefile_ofst_total, &mpi_bhlossconefile);  
     }
+	if (WRITE_RWALK_INFO){
+        mpi_para_file_write(mpi_rwalkfile_wrbuf, &mpi_rwalkfile_len, &mpi_rwalkfile_ofst_total, &mpi_rwalkfile);  
+    }
 /* Meagan's 3bb files */
     if (WRITE_BH_INFO){
         mpi_para_file_write(mpi_newbhfile_wrbuf, &mpi_newbhfile_len, &mpi_newbhfile_ofst_total, &mpi_newbhfile);
@@ -2461,6 +2464,13 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
         if(RESTART_TCOUNT <= 0)
         	MPI_File_set_size(mpi_bhlossconefile, 0);
     }
+
+	if (WRITE_RWALK_INFO){ 
+		sprintf(outfile, "%s.rwalk.dat", outprefix);
+        MPI_File_open(MPI_COMM_WORLD, outfile, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &mpi_rwalkfile);
+        if(RESTART_TCOUNT <= 0)
+        	MPI_File_set_size(mpi_rwalkfile, 0);
+    }
 //MPI: Headers are written out only by the root node.
    // print header
     if(RESTART_TCOUNT <= 0){
@@ -2512,6 +2522,10 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
 
 				if (WRITE_BH_LOSSCONE_INFO)
 						pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:r #4:id0 #5id1: #6:m0[MSUN] #7:m1[MSUN] #8:rad1[RSUN] #9:rad2[RSUN] #10:rad1_c[RSUN] #11:rad2_c[RSUN] #12:kstar0 #13:kstar1 #14:a[AU] #15:e #16:rperi[AU] #17:v_1 #18:v_2 #19:v_3 #20:E #21:J\n");
+
+					
+				if (WRITE_RWALK_INFO)
+						pararootfprintf(rwalkfile,"#1:ID #2:TotalTime #3:r #4:m0[MSUN] #5:m1[MSUN] #6:a[AU] #7:e #8:rperi[AU] #9:v_1 #10:v_2 #11:v_3 #12:E #13:J #14:Steps #15:DeltaTheta_orb #16:DeltaTheta_cmc #17:<Delta> #18:Dt #19:Porb\n");
 
 					}
 	}/*if(RESTART_TCOUNT == 0)*/
@@ -2604,6 +2618,9 @@ void close_node_buffers(void)
 	if (WRITE_BH_LOSSCONE_INFO){
         fclose(bhlossconefile);
     }   
+	if (WRITE_RWALK_INFO){
+        fclose(rwalkfile);
+    }  
 }
 
 
@@ -2651,6 +2668,10 @@ void mpi_close_node_buffers(void)
 	
 	if (WRITE_BH_LOSSCONE_INFO){
         fclose(bhlossconefile);
+    } 
+
+	if (WRITE_RWALK_INFO){
+        fclose(rwalkfile);
     } 
 }
 
@@ -3633,6 +3654,7 @@ typedef struct{
     long long s_mpi_morepulsarfile_len;
     long long s_mpi_morecollfile_len;
 	long long s_mpi_bhlossconefile_len;
+	long long s_mpi_rwalkfile_len;
     long long s_mpi_triplefile_len;
     long long s_mpi_bhmergerfile_len;
     long long s_mpi_logfile_ofst_total;
@@ -3648,6 +3670,7 @@ typedef struct{
     long long s_mpi_morepulsarfile_ofst_total;
     long long s_mpi_morecollfile_ofst_total;
 	long long s_mpi_bhlossconefile_ofst_total;
+	long long s_mpi_rwalkfile_ofst_total;
     long long s_mpi_triplefile_ofst_total;
     long long s_mpi_bhmergerfile_ofst_total;
 
@@ -3689,10 +3712,11 @@ void save_global_vars(restart_struct_t *rest){
 	rest->s_mpi_removestarfile_len             =mpi_removestarfile_len;
 	rest->s_mpi_relaxationfile_len             =mpi_relaxationfile_len;
 	rest->s_mpi_pulsarfile_len                 =mpi_pulsarfile_len;
-        rest->s_mpi_morepulsarfile_len             =mpi_morepulsarfile_len;
-        rest->s_mpi_morecollfile_len               =mpi_morecollfile_len;
-		rest->s_mpi_bhlossconefile_len               =mpi_bhlossconefile_len;          
-        rest->s_mpi_triplefile_len                 =mpi_triplefile_len;
+    rest->s_mpi_morepulsarfile_len             =mpi_morepulsarfile_len;
+    rest->s_mpi_morecollfile_len               =mpi_morecollfile_len;
+	rest->s_mpi_bhlossconefile_len             =mpi_bhlossconefile_len;
+	rest->s_mpi_rwalkfile_len                  =mpi_rwalkfile_len;            
+    rest->s_mpi_triplefile_len                 =mpi_triplefile_len;
 	rest->s_mpi_bhmergerfile_len               =mpi_bhmergerfile_len;
 	rest->s_mpi_logfile_ofst_total             =mpi_logfile_ofst_total;
 	rest->s_mpi_escfile_ofst_total             =mpi_escfile_ofst_total;
@@ -3704,10 +3728,11 @@ void save_global_vars(restart_struct_t *rest){
 	rest->s_mpi_removestarfile_ofst_total      =mpi_removestarfile_ofst_total;
 	rest->s_mpi_relaxationfile_ofst_total      =mpi_relaxationfile_ofst_total;
 	rest->s_mpi_pulsarfile_ofst_total          =mpi_pulsarfile_ofst_total;
-        rest->s_mpi_morepulsarfile_ofst_total      =mpi_morepulsarfile_ofst_total;
-        rest->s_mpi_morecollfile_len               =mpi_morecollfile_len;     
-		rest->s_mpi_bhlossconefile_len               =mpi_bhlossconefile_len;     
-        rest->s_mpi_triplefile_ofst_total          =mpi_triplefile_ofst_total;
+    rest->s_mpi_morepulsarfile_ofst_total      =mpi_morepulsarfile_ofst_total;
+    rest->s_mpi_morecollfile_len               =mpi_morecollfile_len;     
+	rest->s_mpi_bhlossconefile_len             =mpi_bhlossconefile_len;     
+	rest->s_mpi_rwalkfile_len                  =mpi_rwalkfile_len; 
+    rest->s_mpi_triplefile_ofst_total          =mpi_triplefile_ofst_total;
 	rest->s_mpi_bhmergerfile_ofst_total        =mpi_bhmergerfile_ofst_total;
 
     rest->s_OldTidalMassLoss                   =OldTidalMassLoss;
@@ -3748,10 +3773,11 @@ void load_global_vars(restart_struct_t *rest){
 	mpi_removestarfile_len             =rest->s_mpi_removestarfile_len;
 	mpi_relaxationfile_len             =rest->s_mpi_relaxationfile_len;
 	mpi_pulsarfile_len                 =rest->s_mpi_pulsarfile_len;
-        mpi_morepulsarfile_len             =rest->s_mpi_morepulsarfile_len;
-        mpi_morecollfile_len               =rest->s_mpi_morecollfile_len;
-		mpi_bhlossconefile_len               =rest->s_mpi_bhlossconefile_len;
-        mpi_triplefile_len                 =rest->s_mpi_triplefile_len;
+    mpi_morepulsarfile_len             =rest->s_mpi_morepulsarfile_len;
+    mpi_morecollfile_len               =rest->s_mpi_morecollfile_len;
+	mpi_bhlossconefile_len             =rest->s_mpi_bhlossconefile_len;
+	mpi_rwalkfile_len                  =rest->s_mpi_rwalkfile_len;
+    mpi_triplefile_len                 =rest->s_mpi_triplefile_len;
 	mpi_bhmergerfile_len               =rest->s_mpi_bhmergerfile_len;
 	mpi_logfile_ofst_total             =rest->s_mpi_logfile_ofst_total;
 	mpi_escfile_ofst_total             =rest->s_mpi_escfile_ofst_total;
@@ -3763,10 +3789,11 @@ void load_global_vars(restart_struct_t *rest){
 	mpi_removestarfile_ofst_total      =rest->s_mpi_removestarfile_ofst_total;
 	mpi_relaxationfile_ofst_total      =rest->s_mpi_relaxationfile_ofst_total;
 	mpi_pulsarfile_ofst_total          =rest->s_mpi_pulsarfile_ofst_total;
-        mpi_morepulsarfile_ofst_total      =rest->s_mpi_morepulsarfile_ofst_total;
-        mpi_morecollfile_ofst_total        =rest->s_mpi_morecollfile_ofst_total; 
-		mpi_bhlossconefile_ofst_total        =rest->s_mpi_bhlossconefile_ofst_total;        
-        mpi_triplefile_ofst_total          =rest->s_mpi_triplefile_ofst_total;
+    mpi_morepulsarfile_ofst_total      =rest->s_mpi_morepulsarfile_ofst_total;
+    mpi_morecollfile_ofst_total        =rest->s_mpi_morecollfile_ofst_total; 
+	mpi_bhlossconefile_ofst_total      =rest->s_mpi_bhlossconefile_ofst_total;
+	mpi_rwalkfile_ofst_total           =rest->s_mpi_rwalkfile_ofst_total;       
+    mpi_triplefile_ofst_total          =rest->s_mpi_triplefile_ofst_total;
 	mpi_bhmergerfile_ofst_total        =rest->s_mpi_bhmergerfile_ofst_total;
 
     OldTidalMassLoss                   =rest->s_OldTidalMassLoss;
@@ -3940,6 +3967,9 @@ void load_restart_file(){
 		if(WRITE_BH_LOSSCONE_INFO){
              MPI_File_seek(mpi_bhlossconefile,mpi_bhlossconefile_ofst_total,MPI_SEEK_SET);
         }
+		if(WRITE_RWALK_INFO){
+             MPI_File_seek(mpi_rwalkfile,mpi_rwalkfile_ofst_total,MPI_SEEK_SET);
+        }
     } else{
         mpi_logfile_len=0;
         mpi_escfile_len=0;
@@ -3953,6 +3983,7 @@ void load_restart_file(){
 	mpi_morepulsarfile_len=0;
 	mpi_morecollfile_len=0;
 	mpi_bhlossconefile_len=0;
+	mpi_rwalkfile_len=0;
 	mpi_triplefile_len=0;
 	mpi_newbhfile_len=0;
 	mpi_bhmergerfile_len=0;
@@ -3970,6 +4001,7 @@ void load_restart_file(){
 	mpi_morepulsarfile_ofst_total=0;
 	mpi_morecollfile_ofst_total=0;
 	mpi_bhlossconefile_ofst_total=0;
+	mpi_rwalkfile_ofst_total=0;
 	mpi_triplefile_ofst_total=0;
 	mpi_newbhfile_ofst_total=0;
 	mpi_bhmergerfile_ofst_total=0;

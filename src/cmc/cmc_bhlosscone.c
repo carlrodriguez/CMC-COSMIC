@@ -29,6 +29,7 @@ void create_rwalk_file(char *fname) {
   pararootfprintf(rwalk_file, "\n");
   pararootfprintf(rwalk_file, 
           "# 1:index, 2:Time, 3:r, 4:Trel, 5:dt, 6:l2_scale, 7:n_steps, 8:beta 9:n_local, 10:W, 11:P_orb, 12:n_orb\n");
+
   mpi_para_file_write(mpi_rwalk_file_wrbuf, &mpi_rwalk_file_len, &mpi_rwalk_file_ofst_total, &mpi_rwalk_file);
   MPI_File_close(&mpi_rwalk_file);
 }
@@ -85,6 +86,8 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	int i;
     int g_index;
 	g_index = get_global_idx(index);
+	int rw_count = 0; /*Elena: counter for number of random walk timesteps*/
+	double avg_delta = 0. ; /*Elena: to temporaly store which delta was chosem*/
 
 	char fname[80];
 	long is_in_ids;
@@ -97,10 +100,12 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	W = 4.0 * sigma_array.sigma[index] / sqrt(3.0*PI);
 	M2ave= calc_average_mass_sqr(g_index, clus.N_MAX);
 	Trel= (PI/32.)*cub(W)/ ( ((double) clus.N_STAR) * n_local * (4.0* M2ave) );
-	if (index==1 && tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
-		is_in_ids=1;
-		create_rwalk_file(fname);
-	};
+
+	/*Elena: temporary*/
+	// if (index==1 && tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
+	// 	is_in_ids=1;
+	// 	create_rwalk_file(fname);
+	// };
 	/* simulate loss cone physics for central mass */
 	//MPI: Parallelized, but might have mistakes since I am not clear as to what some functions are doing.
 	
@@ -159,8 +164,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
-		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
-		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
+		
+		// if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
+		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc && star[index].binind == 0) { /*Elena: just temporary testing */
 			/*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
 			dprintf("index=%d, id=%ld: star eaten by BH\n", g_index, star[index].id);
 			cenma.m_new += star_m[g_index]; 
@@ -171,31 +177,43 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 
 			
 			if(star[index].binind > 0 && WRITE_BH_LOSSCONE_INFO){ //Binary
-				parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
+				parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g\n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
 				// dprintf(" binary!: %g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n ", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN,binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN ,binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
 			}
-	
+			//Elena: this should appear only in the orbit testing branch 
+			
 			else if (WRITE_BH_LOSSCONE_INFO){ //Single
-				parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
+				// parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
 				// dprintf("single!: %g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
 			}
 			destroy_obj(index);
 			L2 = 0.0; 
 		} else { 
+
+			rw_count += 1;
+
 			deltamax= 0.1*FB_CONST_PI;
 			deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
-			/*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
-			delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
 
+			/*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
+			delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe,sqrt(L2)))); 
+			/*Elena, temporary*/
+			avg_delta += delta;
 			/*Set the direction of the random walk step by drawing a random angle dbeta*/
 			dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
 
-			do_random_step(w, dbeta, delta); 
+			do_random_step(w, dbeta, delta);
+			L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/ 
 		} 
+		
 	}; 
-	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
-		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
-				n_local, W, P_orb, n_orb);
+	// if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
+	// 	write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
+	// 			n_local, W, P_orb, n_orb);
+	
+	if(WRITE_RWALK_INFO && star[index].binind > 0) { /*Elena: modyfying a bit for testing*/
+		avg_delta /= rw_count; 
+		parafprintf(rwalkfile, "%ld %g %g %g %g %g %g %g %g %g %g %g %g %ld %g %g %g %g %g \n", g_index, TotalTime, star[index].r, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN, binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb);
 	}
 
 	/*Free up the star structure since we have already r_peri and r_apo in the bhlosscone file */

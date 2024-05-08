@@ -1935,6 +1935,7 @@ void set_global_vars1()
     mpi_morepulsarfile_len=0;
     mpi_morecollfile_len=0;
 	mpi_bhlossconefile_len=0;
+	mpi_rwalkfile_len=0;
     mpi_triplefile_len=0;
 
     mpi_logfile_ofst_total=0;
@@ -1950,6 +1951,7 @@ void set_global_vars1()
     mpi_morepulsarfile_ofst_total=0;
     mpi_morecollfile_ofst_total=0;
 	mpi_bhlossconefile_ofst_total=0;
+	mpi_rwalkfile_ofst_total=0;
     mpi_triplefile_ofst_total=0;
 }
 

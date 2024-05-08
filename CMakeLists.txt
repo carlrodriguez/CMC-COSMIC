@@ -65,7 +65,7 @@ find_package(ZLIB REQUIRED)
 
 find_package(HDF5 COMPONENTS C HL REQUIRED)
 
-find_package(Python3 REQUIRED)
+#find_package(Python3 REQUIRED)
 
 # enable EXPERIMENTAL
 option(WITH_EXPERIMENTAL "Option description" ON)

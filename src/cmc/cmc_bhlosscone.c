@@ -191,8 +191,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 			dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
 
 			do_random_step(w, dbeta, delta); 
+			L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
 		} 
-		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
+		
 	}; 
 	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
 		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,

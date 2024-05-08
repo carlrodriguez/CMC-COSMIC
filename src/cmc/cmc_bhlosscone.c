@@ -165,7 +165,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	delta= 0.0;
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
 		
-		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
+		// if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
+		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc && star[index].binind == 0) { //Elena, only temporary
+
 			/*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
 			dprintf("index=%d, id=%ld: star eaten by BH\n", g_index, star[index].id);
 			cenma.m_new += star_m[g_index]; 
@@ -181,7 +183,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 			}
 			
 			else if (WRITE_BH_LOSSCONE_INFO){ //Single
-				parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
+				// parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
 				// dprintf("single!: %g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
 			}
 			destroy_obj(index);

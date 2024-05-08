@@ -159,7 +159,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
-		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
+		
 		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
 			/*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
 			dprintf("index=%d, id=%ld: star eaten by BH\n", g_index, star[index].id);
@@ -192,6 +192,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 
 			do_random_step(w, dbeta, delta); 
 		} 
+		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
 	}; 
 	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
 		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,

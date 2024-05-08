@@ -2525,7 +2525,7 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
 
 					
 				if (WRITE_RWALK_INFO)
-						pararootfprintf(rwalkfile,"#1:ID #2:TotalTime #3:r #4:m0[MSUN] #5:m1[MSUN] #6:a[AU] #7:e #8:rperi[AU] #9:v_1 #10:v_2 #11:v_3 #12:E #13:J #14:Steps #15:DeltaTheta_orb #16:DeltaTheta_cmc #17:<Delta> #18:Dt #19:Porb\n");
+						pararootfprintf(rwalkfile,"#1:ID #2:TotalTime #3:r #4:m0[MSUN] #5:m1[MSUN] #6:a[AU] #7:e #8:rperi[AU] #9:v_1 #10:v_2 #11:v_3 #12:E #13:J #14:Steps #15:DeltaTheta_orb #16:DeltaTheta_cmc #17:<Delta> #18:Dt #19:Porb #20:Porb_approx \n");
 
 					}
 	}/*if(RESTART_TCOUNT == 0)*/

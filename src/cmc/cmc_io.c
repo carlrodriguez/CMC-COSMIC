@@ -2521,11 +2521,11 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
                         pararootfprintf(morecollfile,"#1:TotalTime #2:collision-type #3:id0 #4:id1 #5:m0[MSUN] #6:m1[MSUN] #7:rad1[RSUN] #8:rad2[RSUN] #9:rho0_c[MSUN/RSUN^3] #10:rho1_c[MSUN/RSUN^3] #11:rho0_env[MSUN/RSUN^3] #12:rho1_env[MSUN/RSUN^3] #13:kstar0 #14:kstar1 #15:idr #16:mr[MSUN] #17:radr[RSUN] #18:rhor_c[MSUN/RSUN^3] #19:rhor_env[MSUN/RSUN^3] #20:kstar, #21:vinf[km/s], #22:rperi\n");
 
 				if (WRITE_BH_LOSSCONE_INFO)
-						pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:r #4:id0 #5id1: #6:m0[MSUN] #7:m1[MSUN] #8:rad1[RSUN] #9:rad2[RSUN] #10:rad1_c[RSUN] #11:rad2_c[RSUN] #12:kstar0 #13:kstar1 #14:a[AU] #15:e #16:rperi[AU] #17:v_1 #18:v_2 #19:v_3 #20:E #21:J\n");
+						pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:r #4:id0 #5id1: #6:m0[MSUN] #7:m1[MSUN] #8:rad1[RSUN] #9:rad2[RSUN] #10:rad1_c[RSUN] #11:rad2_c[RSUN] #12:kstar0 #13:kstar1 #14:a[AU] #15:e #16:rperi[AU] #17:rapo[AU] #18:v_1 #19:v_2 #20:v_3 #21:E #22:J\n");
 
 					
 				if (WRITE_RWALK_INFO)
-						pararootfprintf(rwalkfile,"#1:ID #2:TotalTime #3:r #4:m0[MSUN] #5:m1[MSUN] #6:a[AU] #7:e #8:rperi[AU] #9:v_1 #10:v_2 #11:v_3 #12:E #13:J #14:Steps #15:DeltaTheta_orb #16:DeltaTheta_cmc #17:<Delta> #18:Dt #19:Porb #20:Porb_approx \n");
+						pararootfprintf(rwalkfile,"#1:ID #2:TotalTime #3:r #4:m0[MSUN] #5:m1[MSUN] #6:a[AU] #7:e #8:rperi[AU] #9:rapo[AU] #10:v_1 #11:v_2 #12:v_3 #13:E #14:J #15:Steps #16:DeltaTheta_orb #17:DeltaTheta_cmc #18:<Delta> #19:Dt #20:Porb #21:Porb_approx \n");
 
 					}
 	}/*if(RESTART_TCOUNT == 0)*/

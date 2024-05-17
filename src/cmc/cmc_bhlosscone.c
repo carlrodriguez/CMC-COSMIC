@@ -221,6 +221,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 
         do_random_step(w, dbeta, delta); 
 	} 
+
 	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
 		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
 				n_local, W, P_orb, n_orb);
@@ -619,4 +620,100 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
+int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long binid1, long binid2){
+    
+    /* First check if the integration actually worked; return -1 if error */
+	if ( !( (fabs(retval->DeltaEfrac) < 1.0e-3 || fabs(retval->DeltaE) < 1.0e-3) && 
+		 (fabs(retval->DeltaLfrac) < 1.0e-3 || fabs(retval->DeltaL) < 1.0e-3) ) && 
+         (!((fabs(retval->DeltaE_GWfrac) > 1.0e-3 || fabs(retval->DeltaE_GW > 1.0e-3)
+            ) && retval->PN_ON == 1))) /* did we have a significant energy error that wasn't from gravitational waves? */
+    {
+		parafprintf(binintfile, "outcome: energy and/or angular momentum error\n");
+		print_interaction_error();
+        return -1;
+	} else if ( isnan(retval->DeltaE) || isnan(retval->DeltaL) ) {
+		parafprintf(binintfile, "outcome: NaN returned by fewbody\n");
+		print_interaction_error();
+        return -1;
+	} else if (retval->retval == 0) {
+		/* bad outcome; ignore for now */
+		parafprintf(binintfile, "outcome: stopped\n");
+		print_interaction_error();
+        return -1;
+	} else if (hier->obj[0]->n == 4) {
+		/* outcome is a quadruple */
+		parafprintf(binintfile, "outcome: error\n");
+		print_interaction_error();
+        return -1;
+	} else 
+		parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(hier, string1), fb_sprint_hier_hr(hier, string2));
 
+    /* Five Cases -- 
+     *  --Binary unchanged  return 0
+     *  --Binary disrupted  return 1
+     *  --One TDE           return 2
+     *  --Two TDEs          return 3
+     *  --Binary merger     return 4
+     *  
+     *  Given this, it's easier to look for specific cases rather than process the full output */
+
+    int same_config;
+    int mbhid,binid;
+    /* One object -- either double TDE or the binary is unchanged 
+     * (and is technically in a triple with the MBH)*/
+        // Remember nobj is number of objects directly below this object, 
+        // n is the total number of stars under this (all things under the hierarchy)
+
+    if (hier->nobj == 1){ /* One top-level object */
+        if (hier->obj[0]->n == 1){ /* Either means only one thing left; either binary merger that's TDEd or double TDE*/
+            return 3;
+        } else if (hier->obj[0]->n == 2){ /*Or maybe the binary merged or one TDE*/
+            if ((hier->obj[0]->obj[0]->id[0] == 0) && (hier->obj[0]->obj[0]->ncoll == 0)){
+                mbhid = 0;
+                binid = 1
+            } else if ((hier->obj[0]->obj[1]->id[0] == 0) && (hier->obj[0]->obj[1]->ncoll == 0)){
+                mbhid = 1;
+                binid = 0;
+            }
+            if ((mbhid == 1) || (binid == 1)){ /*IMBH is unmerged, must be a binary merger*/
+                return 4;
+            } else {
+                return 2; /*If not, then it's a single TDE*/ 
+            }
+        } else { /* If three objects then it's a triple!*/
+            if ((hier->obj[0]->obj[0]->id[0] == 0) || (hier->obj[0]->obj[1]->id[0] == 0)){ /* If one of the triple objects is the MBH then the binary is unchanged*/
+                return 0; 
+            } else { /*Otherwise one of the binary components must have exchanged with the MBH*/
+                return 1;
+            }
+        }
+    } else if (hier->nobj == 2){ /* Two top-level objects */ 
+            if ((hier->obj[0]->id[0] == 0) && (hier->obj[0]->ncoll == 0)){
+                mbhid = 0;
+                binid = 1
+            } else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 0)){
+                mbhid = 1;
+                binid = 0;
+            }
+            if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects*/
+                if (hier->obj[binid]->n == 2){ /* Other object is binary */ 
+                    return 0;
+                } else {
+                    return 4; /* Or it's a single star; must have merged */
+                }
+            } else {/*Guess the MBH is in one of the binaries...*/
+                if(hier->obj[0]->n == 2){ /*first object is binary containing MBH*/
+                    binid = 0;
+                    return 1
+                } else if(hier->obj[1]->n == 2){/*second object is binary containing MBH*/
+                    binid = 1;
+                    return 1
+                } else{
+                    return 2; /* Last option is the binary was disrupted and one object TDEd*/
+                }
+            }
+    } else if (hier->nobj == 3){ /* Three unbound objects; can only be binary disruption*/
+        return 1;
+    }
+
+}

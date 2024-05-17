@@ -90,6 +90,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	long is_in_ids;
 	double Trel, n_local, M2ave; 
 	double W, n_steps= 1.;
+    double t_conversion;
 	
 	is_in_ids= 0;
 	sprintf(fname, "%s.rwalk_steps.dat", outprefix);
@@ -128,6 +129,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	
 	/*Define L2 as the total quadratic deflection angle during a timestep*/
 	L2 = l2_scale*fb_sqr(beta);
+
+    /*coefficient to get time from quadratic angle deflection below*/
+    t_conversion = dt/L2;
 	
 	if (BH_R_DISRUPT_NB>0.) {/*The default value of BH_R_DISRUPT_NB is 0*/
 		Rdisr= BH_R_DISRUPT_NB;
@@ -142,11 +146,11 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		} else {
 			Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
 		}
-		Rss=0;//TODO: no idea wtf this is... 4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l;
+		Rss=4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l; // Mass of MBH 
 		Rdisr= MAX(Rdisr, Rss);
 	} else {
 		Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
-	};
+	}
 
 	/*Calculate the angular momentum at the LC using eq. 27 from Freitag & Benz (2002)*/
 	Jlc= sqrt(2.*cenma.m*madhoc*Rdisr);
@@ -158,41 +162,65 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	}
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
+    int in_loss_cone=0;
+
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
 		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
-		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
-			/*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
-			dprintf("index=%d, id=%ld: star eaten by BH\n", g_index, star[index].id);
-			cenma.m_new += star_m[g_index]; 
-			//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
-			//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here.  
-			cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+
+        /*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
+        in_loss_cone = (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc);
+
+		if (in_loss_cone){
+			if(star[index].binind > 0) { //Binary
+
+                /*Figure out how long to run fewbody (how long is this step?)*/
+                time_for_binary = t_conversion*fb_sqr(delta);
+
+                /*Then call fewbody*/
+                fb_ret_t retval;
+                double t=0;
+                fb_hier_t hier;
+                hier.nstarinit = 3;
+                fb_malloc_hier(&hier);
+                retval = binmbh(&t, index, w, star_r[g_index], &hier, rng, time_for_binary);
+
+                /* free Fewbody memory */
+                fb_free_hier(hier); // TODO: Sloppy to malloc and free this every iteration; only do it once
+
+                /* Finally write to file */
+                if(WRITE_BH_LOSSCONE_INFO)
+                    parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
+
+			} else{ //Single
+				cenma.m_new += star_m[g_index]; 
+				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
+				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here.  
+				cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
 				2.0 * star_m[g_index] * madhoc;
 
-			
-			if(star[index].binind > 0 && WRITE_BH_LOSSCONE_INFO){ //Binary
-				parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
-				// dprintf(" binary!: %g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n ", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN,binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN ,binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
-			}
-	
-			else if (WRITE_BH_LOSSCONE_INFO){ //Single
-				parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
-				// dprintf("single!: %g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
-			}
-			destroy_obj(index);
-			L2 = 0.0; 
-		} else { 
-			deltamax= 0.1*FB_CONST_PI;
-			deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
-			/*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
-			delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
+                /* Destroy the star and complete the random walk */
+                destroy_obj(index);
+                L2 = 0.0; 
 
-			/*Set the direction of the random walk step by drawing a random angle dbeta*/
-			dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
+                /* Finally write to file */
+                if (WRITE_BH_LOSSCONE_INFO) 
+                    parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
+			}
+		}
 
-			do_random_step(w, dbeta, delta); 
-		} 
-	}; 
+        /*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
+        deltamax= 0.1*FB_CONST_PI;
+        deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
+        delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
+
+        /* If we have a binary in the loss cone then take steps on order of p_orb */
+        if(in_loss_cone) delta = deltabeta_orb;
+
+        /*Set the direction of the random walk step by drawing a random angle dbeta*/
+        dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
+
+        do_random_step(w, dbeta, delta); 
+	} 
 	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
 		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
 				n_local, W, P_orb, n_orb);

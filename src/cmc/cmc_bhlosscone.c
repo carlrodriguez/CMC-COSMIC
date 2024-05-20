@@ -620,7 +620,7 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
-int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long binid1, long binid2){
+int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
     
     /* First check if the integration actually worked; return -1 if error */
 	if ( !( (fabs(retval->DeltaEfrac) < 1.0e-3 || fabs(retval->DeltaE) < 1.0e-3) && 
@@ -657,27 +657,59 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long binid1, lo
      *  
      *  Given this, it's easier to look for specific cases rather than process the full output */
 
-    int same_config;
-    int mbhid,binid;
+    int mbhid=0,binid=0;
     /* One object -- either double TDE or the binary is unchanged 
      * (and is technically in a triple with the MBH)*/
         // Remember nobj is number of objects directly below this object, 
         // n is the total number of stars under this (all things under the hierarchy)
+	star_t tempstar1, tempstar2;
+    double vs[20];
+    long knew;
+    long binid1, binid2;
+    binid1 = binary[star[index].binind].id1;
+    binid2 = binary[star[index].binind].id2;
+    double r_imbh_frame[3], v_imbh_frame[3];
 
+    // ONE BIG TODO:
+    // we're not differentiating between binary merger -> TDE versus both TDEs...
     if (hier->nobj == 1){ /* One top-level object */
         if (hier->obj[0]->n == 1){ /* Either means only one thing left; either binary merger that's TDEd or double TDE*/
+            //case 3
+            cenma.m_new += star_m[g_index]; 
+            cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+            2.0 * star_m[g_index] * madhoc;
+
+            /* Destroy the star and complete the random walk */
+            destroy_obj(index);
             return 3;
+
         } else if (hier->obj[0]->n == 2){ /*Or maybe the binary merged or one TDE*/
-            if ((hier->obj[0]->obj[0]->id[0] == 0) && (hier->obj[0]->obj[0]->ncoll == 0)){
-                mbhid = 0;
-                binid = 1
-            } else if ((hier->obj[0]->obj[1]->id[0] == 0) && (hier->obj[0]->obj[1]->ncoll == 0)){
+            if ((hier->obj[0]->obj[0]->id[0] == 0) && (hier->obj[0]->obj[0]->ncoll == 1)){
+                binid = 1;
+            } else if ((hier->obj[0]->obj[1]->id[0] == 0) && (hier->obj[0]->obj[1]->ncoll == 1)){
                 mbhid = 1;
-                binid = 0;
             }
             if ((mbhid == 1) || (binid == 1)){ /*IMBH is unmerged, must be a binary merger*/
+
+                for(i=0; i<3; i++){
+                    r_imbh_frame[i] = hier->obj[0]->obj[binid]->r[i] - hier->obj[0]->obj[mbhid]->r[i];
+                    v_imbh_frame[i] = hier->obj[0]->obj[binid]->v[i] - hier->obj[0]->obj[mbhid]->v[i];
+                }
+
+                star_r[get_global_idx(index)] = fb_mod(r_imbh_frame)*cmc_units.l; 
+				knew = create_star(index, 0);
+                cp_SEvars_to_star(index, 0, &tempstar1);
+                cp_m_to_star(index, 0, &tempstar1);
+                cp_SEvars_to_star(index, 1, &tempstar2);
+                cp_m_to_star(index, 1, &tempstar2);
+                merge_two_stars(&tempstar1, &tempstar2, &(star[knew]), vs, curr_st);
+                star[knew].vr += vs[3] * 1.0e5 / (units.l/units.t);
+                vt_add_kick(&(star[knew].vt),vs[1],vs[2], curr_st);
+                destroy_obj(index);
                 return 4;
             } else {
+                if(hier->obj[0]->obj[0]->ncoll > 1)
+    //cp_binmemb_to_star(k, 0, knew);
                 return 2; /*If not, then it's a single TDE*/ 
             }
         } else { /* If three objects then it's a triple!*/
@@ -688,12 +720,10 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long binid1, lo
             }
         }
     } else if (hier->nobj == 2){ /* Two top-level objects */ 
-            if ((hier->obj[0]->id[0] == 0) && (hier->obj[0]->ncoll == 0)){
-                mbhid = 0;
-                binid = 1
-            } else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 0)){
+            if ((hier->obj[0]->id[0] == 0) && (hier->obj[0]->ncoll == 1)){
+                binid = 1;
+            } else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 1)){
                 mbhid = 1;
-                binid = 0;
             }
             if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects*/
                 if (hier->obj[binid]->n == 2){ /* Other object is binary */ 
@@ -704,10 +734,10 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long binid1, lo
             } else {/*Guess the MBH is in one of the binaries...*/
                 if(hier->obj[0]->n == 2){ /*first object is binary containing MBH*/
                     binid = 0;
-                    return 1
+                    return 1;
                 } else if(hier->obj[1]->n == 2){/*second object is binary containing MBH*/
                     binid = 1;
-                    return 1
+                    return 1;
                 } else{
                     return 2; /* Last option is the binary was disrupted and one object TDEd*/
                 }

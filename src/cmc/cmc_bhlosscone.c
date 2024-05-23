@@ -243,7 +243,7 @@ void do_random_step(double *w, double beta, double delta) {
 */
 double calc_P_orb(long index)
 {
-	double E, J, Porb, error, Porbapproxmin, Porbapproxmax, Porbapprox;
+	double E, J, Porb, error, Porbapprox, a_approx;
 	orbit_rs_t orbit_rs;
 	calc_p_orb_params_t params;
 	gsl_function F;
@@ -268,13 +268,11 @@ double calc_P_orb(long index)
 	star[index].r_peri = orbit_rs.rp;
 	star[index].r_apo = orbit_rs.ra;
 
-	/*A cheap way to compute the radial orbital period: just 
-	 * geometrically average the equivalent orbital period of a
-	 * circular orbit at pericenter and apocenter.  This works exactly
-	 * in the Keplarian case, but not for a general spherical potential*/
-	Porbapproxmin = 2.0 * PI * orbit_rs.rp / (J / orbit_rs.rp);
-	Porbapproxmax = 2.0 * PI * orbit_rs.ra / (J / orbit_rs.ra);
-	Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
+	/*A cheap way to compute the radial orbital period in the Keplerian limit 
+	(which should be true close the massive central black hole): just define the semimajor axis 
+	as a = (rperi + rapo)/2 and use Kepler's third law.*/
+	a_approx = (orbit_rs.rp + orbit_rs.ra) / 2.0 ; 
+	Porbapprox = pow((pow(a_approx,3.0) + 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
 
 	if (orbit_rs.ra-orbit_rs.rp< CIRC_PERIOD_THRESHOLD) {
 		dprintf("Orbit is considered circular for period calculation.\n");

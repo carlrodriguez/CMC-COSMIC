@@ -221,10 +221,10 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
 
 		if(star[index].binind > 0){ /*Binary*/
-			parafprintf(rwalkfile, "%ld %g %g %g %g %g %g %g %g %g %g %g %g %g %ld %g %g %g %g %g %g\n", g_index, TotalTime, star[index].r, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN, binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, star[index].r_apo * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb, Porbapprox);
+			parafprintf(rwalkfile, "%ld %g %g %g %g %g %g %g %g %g %g %g %g %g %ld %g %g %g %g %g %g\n", g_index, TotalTime, star[index].r, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN, binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, star[index].r_apo * units.l / AU, v[1], v[2], v[3], star[index].E + MPI_PHI_S(star_r[g_index], g_index), star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb, Porbapprox);
 			}
 		else{/*Single*/
-			parafprintf(rwalkfile, "%ld %g %g %g -100 -100 -100 %g %g %g %g %g %g %g %ld %g %g %g %g %g %g\n", g_index, TotalTime, star[index].r, star[index].m * units.mstar / MSUN,  star[index].r_peri * units.l / AU, star[index].r_apo * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb, Porbapprox);
+			parafprintf(rwalkfile, "%ld %g %g %g -100 -100 -100 %g %g %g %g %g %g %g %ld %g %g %g %g %g %g\n", g_index, TotalTime, star[index].r, star[index].m * units.mstar / MSUN,  star[index].r_peri * units.l / AU, star[index].r_apo * units.l / AU, v[1], v[2], v[3], star[index].E + MPI_PHI_S(star_r[g_index], g_index), star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb, Porbapprox);
 			}	
 		}
 	
@@ -304,7 +304,10 @@ double calc_P_orb(long index)
 	Porbapproxmin = 2.0 * PI * orbit_rs.rp / (J / orbit_rs.rp);
 	Porbapproxmax = 2.0 * PI * orbit_rs.ra / (J / orbit_rs.ra);
 	Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
-
+	
+	if (star[index].r * units.l <= 0.1){
+		dprintf("a_from_rp = %g, a_from_E = %g \n", (orbit_rs.rp + orbit_rs.ra)/2, (-1)/(2*E)); 
+	}
 	if (orbit_rs.ra-orbit_rs.rp< CIRC_PERIOD_THRESHOLD) {
 		dprintf("Orbit is considered circular for period calculation.\n");
 		dprintf("ra-rp= %g and is less than the threshold %g\n", 
@@ -343,14 +346,14 @@ double calc_P_orb(long index)
 			  dprintf("(r[r_kmax]-rmax=%g, r[r_kmax+1]-rmax)= %g\n", 
 			    star[params.kmax-1].r-orbit_rs.ra,star[params.kmax].r-orbit_rs.ra);
 			};
-                        if (calc_vr(params.rp, index, E, J)< 0.) {
-                          dprintf("Harrrg: vr(rmin)< 0.! Damn it! Index: %li, Id: %li\n", index, 
-                            star[index].id);
-                        };
-                        if (calc_vr(params.ra, index, E, J)< 0.) {
-                          dprintf("Harrrg: vr(rmax)< 0.! Damn it! Index: %li, Id: %li\n", index, 
-                            star[index].id);
-                        };
+                        // if (calc_vr(params.rp, index, E, J)< 0.) {
+                        // //   dprintf("Harrrg: vr(rmin)< 0.! Damn it! Index: %li, Id: %li\n", index, 
+                        //     // star[index].id);
+                        // };
+                        // if (calc_vr(params.ra, index, E, J)< 0.) {
+                        // //   dprintf("Harrrg: vr(rmax)< 0.! Damn it! Index: %li, Id: %li\n", index, 
+                        //     // star[index].id);
+                        // };
                         if (params.kmax!=orbit_rs.kmax+1) 
                           dprintf("kmax in orbit_rs and params differ! kmax_o= %li, kmax_p=%li, Index: %li, Id: %li\n", 
                             orbit_rs.kmax, params.kmax, index, star[index].id);

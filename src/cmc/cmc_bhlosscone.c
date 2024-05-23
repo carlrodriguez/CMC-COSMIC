@@ -88,7 +88,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	g_index = get_global_idx(index);
 	int rw_count = 0; /*Elena: counter for number of random walk timesteps*/
 	double avg_delta = 0. ; /*Elena: to temporaly store which delta was chosem*/
-	double Porbapproxmin, Porbapproxmax, Porbapprox;/*Elena: to temporaly */
+	double a_approx, Porbapprox;/*Elena: to temporaly */
 
 	char fname[80];
 	long is_in_ids;
@@ -216,9 +216,8 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		* geometrically average the equivalent orbital period of a
 		* circular orbit at pericenter and apocenter.  This works exactly
 		* in the Keplarian case, but not for a general spherical potential*/
-		Porbapproxmin = 2.0 * PI * star[index].r_peri / (star[index].J / star[index].r_peri);
-		Porbapproxmax = 2.0 * PI * star[index].r_apo / (star[index].J / star[index].r_apo);
-		Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
+		a_approx = (star[index].r_peri + star[index].r_apo) / 2.0 ; 
+		Porbapprox = pow((pow(a_approx,3.0) * 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
 
 		if(star[index].binind > 0){ /*Binary*/
 			parafprintf(rwalkfile, "%ld %g %g %g %g %g %g %g %g %g %g %g %g %g %ld %g %g %g %g %g %g\n", g_index, TotalTime, star[index].r, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN, binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, star[index].r_apo * units.l / AU, v[1], v[2], v[3], star[index].E + MPI_PHI_S(star_r[g_index], g_index), star[index].J, rw_count, deltabeta_orb, beta, avg_delta, dt, P_orb, Porbapprox);
@@ -272,7 +271,7 @@ void do_random_step(double *w, double beta, double delta) {
 */
 double calc_P_orb(long index)
 {
-	double E, J, Porb, error, Porbapproxmin, Porbapproxmax, Porbapprox;
+	double E, J, Porb, error, a_approx, Porbapprox;
 	orbit_rs_t orbit_rs;
 	calc_p_orb_params_t params;
 	gsl_function F;
@@ -301,9 +300,9 @@ double calc_P_orb(long index)
 	 * geometrically average the equivalent orbital period of a
 	 * circular orbit at pericenter and apocenter.  This works exactly
 	 * in the Keplarian case, but not for a general spherical potential*/
-	Porbapproxmin = 2.0 * PI * orbit_rs.rp / (J / orbit_rs.rp);
-	Porbapproxmax = 2.0 * PI * orbit_rs.ra / (J / orbit_rs.ra);
-	Porbapprox = sqrt(Porbapproxmin * Porbapproxmax);
+	a_approx = (orbit_rs.rp + orbit_rs.ra) / 2.0 ; 
+	Porbapprox = pow((pow(a_approx,3.0) + 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
+
 	
 	if (star[index].r * units.l <= 0.1){
 		dprintf("a_from_rp = %g, a_from_E = %g \n", (orbit_rs.rp + orbit_rs.ra)/2, (-1)/(2*E)); 

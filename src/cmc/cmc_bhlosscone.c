@@ -272,7 +272,7 @@ double calc_P_orb(long index)
 	(which should be true close the massive central black hole): just define the semimajor axis 
 	as a = (rperi + rapo)/2 and use Kepler's third law.*/
 	a_approx = (orbit_rs.rp + orbit_rs.ra) / 2.0 ; 
-	Porbapprox = pow((pow(a_approx,3.0) + 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
+	Porbapprox = pow((pow(a_approx,3.0) * 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
 
 	if (orbit_rs.ra-orbit_rs.rp< CIRC_PERIOD_THRESHOLD) {
 		dprintf("Orbit is considered circular for period calculation.\n");

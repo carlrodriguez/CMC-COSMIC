@@ -1029,7 +1029,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 1))
                 mbhid = 1;
             
-            if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects; binary merger*/
+            if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects; the binary must have merged*/
 
                     /* Create a new star for the binary merger*/
                     knew = create_star(index, 0);
@@ -1137,15 +1137,15 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
                     /* Copy stellar evolution parameters from binary member */
                     if(hier->obj[sinid]->id[0] == binary[star[index].binind].id1)
-                        binind = 0;
+                        binid = 0;
                     else
-                        binind = 1;
-                    cp_SEvars_to_newstar(index, binind, knew);
+                        binid = 1;
+                    cp_SEvars_to_newstar(index, binid, knew);
 
                     /*Add mass of other star to the MBH*/
-                    cenma.m_new += hier->obj[mbhid]->m * cmc_units.m/madhoc; 
+                    cenma.m_new = hier->obj[mbhid]->m * cmc_units.m/madhoc; 
 
-                    /*Energy too*/
+                    /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
                     cenma.E_new += hier->obj[mbhid]->Eint * cmc_units.E; 
                     /*Same caveat on energy conservation as above*/
 
@@ -1166,7 +1166,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             if (hier->obj[i]->id[0] == 0)
                 mbhid = i;
             else 
-                sinids[j++]; /*real gross carl*/
+                sinids[j++];
         }
 
         for(j=0 ; j < 2 ; i++){

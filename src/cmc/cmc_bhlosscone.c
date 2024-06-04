@@ -77,7 +77,7 @@ void write_rwalk_data(char *fname, long index, double Trel, double dt,
 * @param beta Deflection angle due to two-body relaxation in a given timestep.
 * @param dt MC timestep
 */
-void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt)
+void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng)
 { 
 	double w[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
@@ -163,6 +163,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
     int in_loss_cone=0;
+    double time_for_binary;
 
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
 		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
@@ -620,8 +621,35 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
-int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index){
     
+    int mbhid=0,binid=0,sinid=0;
+    /* One object -- either double TDE or the binary is unchanged 
+     * (and is technically in a triple with the MBH)*/
+        // Remember nobj is number of objects directly below this object, 
+        // n is the total number of stars under this (all things under the hierarchy)
+	star_t tempstar1, tempstar2;
+    int i;
+    double vs[20];
+    long knew, knew1, knew2;
+    double r_imbh_frame[3], v_imbh_frame[3], rhat[3], v_t[3];
+    double rmag, v_rmag;
+	char string1[1024], string2[1024];
+
+	fb_units_t cmc_units, printing_units;
+    cmc_units.v = sqrt((star_m[0]+star_m[get_global_idx(index)])/(star_m[0]*star_m[get_global_idx(index)]) * 
+               (binary[star[index].binind].m1 * binary[star[index].binind].m2 / binary[star[index].binind].a) * madhoc);
+    cmc_units.l = binary[star[index].binind].a;
+    cmc_units.t = cmc_units.l / cmc_units.v;
+    cmc_units.m = cmc_units.l * sqr(cmc_units.v);
+    cmc_units.E = cmc_units.m * sqr(cmc_units.v);
+
+	printing_units.v = cmc_units.v * units.l / units.t;
+	printing_units.l = cmc_units.l * units.l;
+	printing_units.t = cmc_units.t * units.t;
+	printing_units.m = cmc_units.m * units.m;
+	printing_units.E = cmc_units.E * units.E;
+
     /* First check if the integration actually worked; return -1 if error */
 	if ( !( (fabs(retval->DeltaEfrac) < 1.0e-3 || fabs(retval->DeltaE) < 1.0e-3) && 
 		 (fabs(retval->DeltaLfrac) < 1.0e-3 || fabs(retval->DeltaL) < 1.0e-3) ) && 
@@ -646,7 +674,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 		print_interaction_error();
         return -1;
 	} else 
-		parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(hier, string1), fb_sprint_hier_hr(hier, string2));
+		parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(*hier, string1), fb_sprint_hier_hr(*hier, string2));
 
     /* Five Cases -- 
      *  --Binary unchanged  return 0
@@ -657,19 +685,11 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
      *  
      *  Given this, it's easier to look for specific cases rather than generically process the full output */
 
-    int mbhid=0,binid=0,sinid=0;
-    /* One object -- either double TDE or the binary is unchanged 
-     * (and is technically in a triple with the MBH)*/
-        // Remember nobj is number of objects directly below this object, 
-        // n is the total number of stars under this (all things under the hierarchy)
-	star_t tempstar1, tempstar2;
-    double vs[20];
-    long knew, knew1, knew2;
-    double r_imbh_frame[3], v_imbh_frame[3], rhat[3], v_t[3];
-    double rmag, v_rmag;
-
     // ONE BIG TODO:
     // we're not differentiating between binary merger -> TDE versus both TDEs...
+
+    double MBH_TDE_ACCRETION = 0.5;//
+    // TODO: make this a parameter and set it *everywhere* (including inside fewbody)
 
     if (hier->nobj == 1){ /* One top-level object */
         if (hier->obj[0]->n == 1){ /* Only one star; either binary merger that's TDEd or double TDE*/
@@ -705,7 +725,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
                 /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
                 for(i=0; i<3; i++){
-                    r_imbh_frame[i] = hier->obj[0]->obj[binid]->r[i] - hier->obj[0]->obj[mbhid]->r[i];
+                    r_imbh_frame[i] = hier->obj[0]->obj[binid]->x[i] - hier->obj[0]->obj[mbhid]->x[i];
                     v_imbh_frame[i] = hier->obj[0]->obj[binid]->v[i] - hier->obj[0]->obj[mbhid]->v[i];
                 }
 
@@ -765,7 +785,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
                 /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
                 for(i=0; i<3; i++){
-                    r_imbh_frame[i] = hier->obj[0]->obj[sinid]->r[i] - hier->obj[0]->obj[mbhid]->r[i];
+                    r_imbh_frame[i] = hier->obj[0]->obj[sinid]->x[i] - hier->obj[0]->obj[mbhid]->x[i];
                     v_imbh_frame[i] = hier->obj[0]->obj[sinid]->v[i] - hier->obj[0]->obj[mbhid]->v[i];
                 }
 
@@ -829,7 +849,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
         } else { /* If three objects then it's a triple!*/
 
             /*first find the binary*/
-            if(hier->obj[0]->obj[0]->nobj == 1)
+            if(hier->obj[0]->obj[0]->n == 1)
                 binid = 1;
             else
                 sinid = 1;
@@ -849,7 +869,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             /* FIRST STAR (tertiary of triple) */
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
             for(i=0; i<3; i++){
-                r_imbh_frame[i] = hier->obj[0]->obj[sinid]->r[i] - hier->obj[0]->obj[binid]->obj[mbhid]->r[i];
+                r_imbh_frame[i] = hier->obj[0]->obj[sinid]->x[i] - hier->obj[0]->obj[binid]->obj[mbhid]->x[i];
                 v_imbh_frame[i] = hier->obj[0]->obj[sinid]->v[i] - hier->obj[0]->obj[binid]->obj[mbhid]->v[i];
             }
 
@@ -869,7 +889,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             /* SECOND STAR (inner binary star) */
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
             for(i=0; i<3; i++){
-                r_imbh_frame[i] = hier->obj[0]->obj[binid]->obj[1-mbhid]->r[i] - hier->obj[0]->obj[binid]->obj[mbhid]->r[i];
+                r_imbh_frame[i] = hier->obj[0]->obj[binid]->obj[1-mbhid]->x[i] - hier->obj[0]->obj[binid]->obj[mbhid]->x[i];
                 v_imbh_frame[i] = hier->obj[0]->obj[binid]->obj[1-mbhid]->v[i] - hier->obj[0]->obj[binid]->obj[mbhid]->v[i];
             }
 
@@ -927,7 +947,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
     } else if (hier->nobj == 2){ /* Two top-level objects */ 
         if (hier->nstar == 3){ /*We have a binary and single; same code as above*/
 
-            if(hier->obj[0]->nstar == 1) /*first find the binary*/
+            if(hier->obj[0]->n == 1) /*first find the binary*/
                 binid = 1;
             else 
                 sinid = 1;
@@ -948,7 +968,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             /* FIRST STAR (tertiary of triple) */
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
             for(i=0; i<3; i++){
-                r_imbh_frame[i] = hier->obj[sinid]->r[i] - hier->obj[binid]->obj[mbhid]->r[i];
+                r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[binid]->obj[mbhid]->x[i];
                 v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[binid]->obj[mbhid]->v[i];
             }
 
@@ -968,7 +988,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
             /* SECOND STAR (inner binary star) */
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
             for(i=0; i<3; i++){
-                r_imbh_frame[i] = hier->obj[binid]->obj[1-mbhid]->r[i] - hier->obj[binid]->obj[mbhid]->r[i];
+                r_imbh_frame[i] = hier->obj[binid]->obj[1-mbhid]->x[i] - hier->obj[binid]->obj[mbhid]->x[i];
                 v_imbh_frame[i] = hier->obj[binid]->obj[1-mbhid]->v[i] - hier->obj[binid]->obj[mbhid]->v[i];
             }
 
@@ -1036,7 +1056,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
                     /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
                     for(i=0; i<3; i++){
-                        r_imbh_frame[i] = hier->obj[sinid]->r[i] - hier->obj[mbhid]->r[i];
+                        r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[mbhid]->x[i];
                         v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[mbhid]->v[i];
                     }
 
@@ -1057,7 +1077,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
                     star_m[get_global_idx(knew)] = hier->obj[sinid]->m * cmc_units.m/madhoc;
 
                     /*Binary merger, so set internal energy*/
-                    star[knew].Eint = hier->obj[]
+                    star[knew].Eint = hier->obj[sinid]->Eint*cmc_units.E;
 
                     /*set potential*/
                     star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
@@ -1100,7 +1120,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
                     /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
                     for(i=0; i<3; i++){
-                        r_imbh_frame[i] = hier->obj[sinid]->r[i] - hier->obj[mbhid]->r[i];
+                        r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[mbhid]->x[i];
                         v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[mbhid]->v[i];
                     }
 
@@ -1177,7 +1197,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_retval_t *retval, long index){
 
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
             for(i=0; i<3; i++){
-                r_imbh_frame[i] = hier->obj[sinids[j]]->r[i] - hier->obj[mbhid]->r[i];
+                r_imbh_frame[i] = hier->obj[sinids[j]]->x[i] - hier->obj[mbhid]->x[i];
                 v_imbh_frame[i] = hier->obj[sinids[j]]->v[i] - hier->obj[mbhid]->v[i];
             }
 

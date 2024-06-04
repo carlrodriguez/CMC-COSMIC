@@ -500,10 +500,10 @@ are skipped if they already interacted in 3bb loop!  */
 
 			if (cenma.m > 0.0 && BH_LOSS_CONE) {
 				if (star[k].E < 0.0) {
-					bh_rand_walk(k, v_new, vcm, beta, dt);
+					bh_rand_walk(k, v_new, vcm, beta, dt, rng);
 				}
 				if (star[kp].E < 0.0) {
-					bh_rand_walk(kp, vp_new, vcm, beta, dt);
+					bh_rand_walk(kp, vp_new, vcm, beta, dt, rng);
 				}
 			}
 

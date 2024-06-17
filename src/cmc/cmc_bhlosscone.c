@@ -304,7 +304,7 @@ double calc_P_orb(long index)
 	Porbapprox = pow((pow(a_approx,3.0) + 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
 
 	
-	if (star[index].r * units.l <= 0.1){
+	if (star[index].r <= 0.1){
 		dprintf("a_from_rp = %g, a_from_E = %g \n", (orbit_rs.rp + orbit_rs.ra)/2, (-1)/(2*E)); 
 	}
 	if (orbit_rs.ra-orbit_rs.rp< CIRC_PERIOD_THRESHOLD) {

@@ -104,6 +104,7 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 	hier->hier[hier->hi[2]+0].obj[1] = &(hier->hier[hier->hi[1]+2]);
 	hier->hier[hier->hi[2]+0].t = *t;
 
+
 	/* give the objects some properties */
 	for (j=0; j<hier->nstar; j++) {
 		hier->hier[hier->hi[1]+j].ncoll = 1;

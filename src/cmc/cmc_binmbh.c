@@ -49,14 +49,8 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 	/* a useful definition */
 	jbin = star[kbin].binind;
 
-	/* v_inf should be in units of v_crit */
-	vc = sqrt(binary[jbin].m1 * binary[jbin].m2 * (star_m[0]) / \
-		  (binary[jbin].a * star_m[get_global_idx(kbin)] * star_m[0] * ((double) clus.N_STAR)));
-	distance = dist / binary[jbin].a;
-				
 	/* set parameters */
 	input.ks = 0;
-	input.tstop = time*units.t; 
 	input.Dflag = 0;
 	input.dt = 0.0;
 	input.tcpustop = 60.0;
@@ -88,6 +82,7 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 	hier->hier[hier->hi[2]+0].obj[1] = &(hier->hier[hier->hi[1]+2]);
 	hier->hier[hier->hi[2]+0].t = *t;
 
+
 	/* give the objects some properties */
 	for (j=0; j<hier->nstar; j++) {
 		hier->hier[hier->hi[1]+j].ncoll = 1;
@@ -106,7 +101,7 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 
     /* Note: we may want TDEs without necessarily having star-star collisions*/
 	if (SS_COLLISION || BH_LOSS_CONE) {
-		hier->hier[hier->hi[1]+0].R = star_m[0]*units.mstar / FB_CONST_MSUN * 9.8664506e-9 * FB_CONST_AU * BH_RADIUS_MULTIPLYER; // Convert mass to BH_radius
+		hier->hier[hier->hi[1]+0].R = cenma.m*units.mstar / FB_CONST_MSUN * 9.8664506e-9 * FB_CONST_AU * BH_RADIUS_MULTIPLYER; // Convert mass to BH_radius
 		hier->hier[hier->hi[1]+1].R = binary[jbin].rad1 * units.l;
 		hier->hier[hier->hi[1]+2].R = binary[jbin].rad2 * units.l;
         if(binary[jbin].bse_kw[0] == 14) hier->hier[hier->hi[1]+1].R *= BH_RADIUS_MULTIPLYER; 
@@ -117,7 +112,7 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 		hier->hier[hier->hi[1]+2].R = 0.0;
 	}
 
-	hier->hier[hier->hi[1]+0].m = star_m[0] * units.mstar;
+	hier->hier[hier->hi[1]+0].m = cenma.m * units.mstar;
 	hier->hier[hier->hi[1]+1].m = binary[jbin].m1 * units.mstar;
 	hier->hier[hier->hi[1]+2].m = binary[jbin].m2 * units.mstar;
 
@@ -145,7 +140,7 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 	/* logging */
 	parafprintf(binintfile, "********************************************************************************\n");
 	parafprintf(binintfile, "type=BMBH t=%.9g\n", TotalTime);
-	parafprintf(binintfile, "params: distance=%g v_x=%g v_y=%g v_z=%g vc=%g\n", distance, v[0], v[1], v[2], vc);
+	parafprintf(binintfile, "params[CMC Code Units]: distance=%g v_x=%g v_y=%g v_z=%g\n", dist, v[0], v[1], v[2]);
 	/* set units to 1 since we're already in CGS */
 	fb_units.v = fb_units.l = fb_units.t = fb_units.m = fb_units.E = 1.0;
 	parafprintf(binintfile, "input: ");
@@ -162,8 +157,8 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 	hier->obj[0]->v[1] = 0.0; 
 	hier->obj[0]->v[2] = 0.0;
 
-	hier->obj[1]->x[0] = 0.0
-	hier->obj[1]->x[1] = 0.0
+	hier->obj[1]->x[0] = 0.0;
+	hier->obj[1]->x[1] = 0.0;
 	hier->obj[1]->x[2] = dist*units.l;
 	
 	hier->obj[1]->v[0] = v[0]*units.l/units.t;
@@ -173,6 +168,9 @@ fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier,
 	/* get the units and normalize */
 	bmbh_calcunits(hier->obj, &fb_units);
 	fb_normalize(hier, fb_units);
+
+    /* This needs to be set here after fb_units is defined*/
+	input.tstop = time*units.t/fb_units.t; 
 	
 	/* trickle down the binary properties, then back up */
 	fb_randorient(&(hier->hier[hier->hi[2]+0]), rng, curr_st);

@@ -13,7 +13,7 @@
 * @param obj[2] ?
 * @param bs_units ?
 */
-void bs_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units)
+void bmbh_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units)
 {
 	bs_units->v = sqrt(FB_CONST_G*(obj[0]->m + obj[1]->m)/(obj[0]->m * obj[1]->m) * \
 			(obj[1]->obj[0]->m * obj[1]->obj[1]->m / obj[1]->a));
@@ -36,12 +36,12 @@ void bs_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units)
 *
 * @return ?
 */
-fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hier_t *hier, gsl_rng *rng)
+fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier, gsl_rng *rng, double time)
 {
 	int j;
 	long jbin;
     int num_bh=0;
-	double vc, b, rtid, m0, m1, a1, e1, m10, m11;
+	double m0, m1, a1, e1, m10, m11;
 	fb_units_t fb_units;
 	fb_input_t input;
 	fb_ret_t retval;
@@ -49,17 +49,8 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 	/* a useful definition */
 	jbin = star[kbin].binind;
 
-
-	/* v_inf should be in units of v_crit */
-	vc = sqrt(binary[jbin].m1 * binary[jbin].m2 * (star_m[get_global_idx(kbin)] + star_m[get_global_idx(ksin)]) / \
-		  (binary[jbin].a * star_m[get_global_idx(kbin)] * star_m[get_global_idx(ksin)] * ((double) clus.N_STAR)));
-	b = sqrt(rng_t113_dbl_new(curr_st)) * bmax / binary[jbin].a;
-	/* b should be in units of a */
-	//b = sqrt(rng_t113_dbl()) * bmax / binary[jbin].a;
-				
 	/* set parameters */
 	input.ks = 0;
-	input.tstop = 1.0e7;
 	input.Dflag = 0;
 	input.dt = 0.0;
 	input.tcpustop = 60.0;
@@ -68,32 +59,19 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 	input.ncount = 500;
 	input.tidaltol = 1.0e-5;
 	input.speedtol = 1;
+
 	input.PN1 = 0;
 	input.PN2 = 0;
 	input.PN25 = 0;
 	input.PN3 = 0;
 	input.PN35 = 0;
+    /* Only used for stellar-mass BHs*/
     input.BH_REFF = BH_RADIUS_MULTIPLYER;
     input.BHNS_TDE_FLAG = BHNS_TDE;
 	input.firstlogentry[0] = '\0';
 	input.fexp = 1.0;
 	fb_debug = 0;
 
-
-    /* If we have more than one black hole, adjust the integrator,
-     * adding post-Newtonian terms and allowing longer integrations */
-	if(star[ksin].se_k == 14) num_bh++; 
-	if(binary[jbin].bse_kw[0] == 14)  num_bh++; 
-	if(binary[jbin].bse_kw[1] == 14)  num_bh++;
-
-    if((num_bh) > 1 & BH_CAPTURE){
-        input.tcpustop *= 10.;
-        input.PN1 = 0;
-        input.PN2 = 0;
-        input.PN25 = 1;
-        input.speedtol = 0.05;
-    }
-	
 	/* initialize a few things for integrator */
 	*t = 0.0;
 	hier->nstar = 3;
@@ -117,15 +95,15 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 		hier->hier[hier->hi[1]+j].Lint[2] = 0.0;
 	}
 	
-	hier->hier[hier->hi[1]+0].id[0] = star[ksin].id;
+	hier->hier[hier->hi[1]+0].id[0] = 0; // MBH is always star 0 
 	hier->hier[hier->hi[1]+1].id[0] = binary[jbin].id1;
 	hier->hier[hier->hi[1]+2].id[0] = binary[jbin].id2;
 
-	if (SS_COLLISION) {
-		hier->hier[hier->hi[1]+0].R = star[ksin].rad * units.l;
+    /* Note: we may want TDEs without necessarily having star-star collisions*/
+	if (SS_COLLISION || BH_LOSS_CONE) {
+		hier->hier[hier->hi[1]+0].R = cenma.m*units.mstar / FB_CONST_MSUN * 9.8664506e-9 * FB_CONST_AU * BH_RADIUS_MULTIPLYER; // Convert mass to BH_radius
 		hier->hier[hier->hi[1]+1].R = binary[jbin].rad1 * units.l;
 		hier->hier[hier->hi[1]+2].R = binary[jbin].rad2 * units.l;
-        if(star[ksin].se_k == 14)  hier->hier[hier->hi[1]+0].R *= BH_RADIUS_MULTIPLYER; 
         if(binary[jbin].bse_kw[0] == 14) hier->hier[hier->hi[1]+1].R *= BH_RADIUS_MULTIPLYER; 
         if(binary[jbin].bse_kw[1] == 14) hier->hier[hier->hi[1]+2].R *= BH_RADIUS_MULTIPLYER; 
 	} else {
@@ -134,21 +112,21 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 		hier->hier[hier->hi[1]+2].R = 0.0;
 	}
 
-	hier->hier[hier->hi[1]+0].m = star_m[get_global_idx(ksin)] * units.mstar;
+	hier->hier[hier->hi[1]+0].m = cenma.m * units.mstar;
 	hier->hier[hier->hi[1]+1].m = binary[jbin].m1 * units.mstar;
 	hier->hier[hier->hi[1]+2].m = binary[jbin].m2 * units.mstar;
 
-	hier->hier[hier->hi[1]+0].k_type = star[ksin].se_k;
+	hier->hier[hier->hi[1]+0].k_type = 14;
 	hier->hier[hier->hi[1]+1].k_type = binary[jbin].bse_kw[0];
 	hier->hier[hier->hi[1]+2].k_type = binary[jbin].bse_kw[1];
 
-	hier->hier[hier->hi[1]+0].chi = star[ksin].se_bhspin;
+	hier->hier[hier->hi[1]+0].chi = 0; 
 	hier->hier[hier->hi[1]+1].chi = binary[jbin].bse_bhspin[0];
 	hier->hier[hier->hi[1]+2].chi = binary[jbin].bse_bhspin[1];
 
 	hier->hier[hier->hi[2]+0].m = hier->hier[hier->hi[1]+1].m + hier->hier[hier->hi[1]+2].m;
 
-	hier->hier[hier->hi[1]+0].Eint = star[ksin].Eint * units.E;
+	hier->hier[hier->hi[1]+0].Eint = cenma.E * units.E;  
 	hier->hier[hier->hi[1]+1].Eint = binary[jbin].Eint1 * units.E;
 	hier->hier[hier->hi[1]+2].Eint = binary[jbin].Eint2 * units.E;
 
@@ -161,8 +139,8 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 
 	/* logging */
 	parafprintf(binintfile, "********************************************************************************\n");
-	parafprintf(binintfile, "type=BS t=%.9g\n", TotalTime);
-	parafprintf(binintfile, "params: b=%g v=%g\n", b, W/vc);
+	parafprintf(binintfile, "type=BMBH t=%.9g\n", TotalTime);
+	parafprintf(binintfile, "params[CMC Code Units]: distance=%g v_x=%g v_y=%g v_z=%g\n", dist, v[0], v[1], v[2]);
 	/* set units to 1 since we're already in CGS */
 	fb_units.v = fb_units.l = fb_units.t = fb_units.m = fb_units.E = 1.0;
 	parafprintf(binintfile, "input: ");
@@ -170,21 +148,29 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 	parafprintf(binintfile, "input: ");
 	binint_log_obj(hier->obj[1], fb_units);
 
-	/* get the units and normalize */
-	bs_calcunits(hier->obj, &fb_units);
-	fb_normalize(hier, fb_units);
+	/* set the positions and velocities */
+	hier->obj[0]->x[0] = 0.0; 
+	hier->obj[0]->x[1] = 0.0; 
+	hier->obj[0]->x[2] = 0.0;
 	
-	/* move objects in from infinity along hyperbolic orbit */
-	m0 = hier->obj[0]->m;
-	m1 = hier->obj[1]->m;
-	a1 = hier->obj[1]->a;
-	e1 = hier->obj[1]->e;
-	m10 = hier->obj[1]->obj[0]->m;
-	m11 = hier->obj[1]->obj[1]->m;
+	hier->obj[0]->v[0] = 0.0;
+	hier->obj[0]->v[1] = 0.0; 
+	hier->obj[0]->v[2] = 0.0;
 
-	rtid = pow(2.0*m0*m1/input.tidaltol, 1.0/3.0) * pow(m10*m11, -1.0/3.0)*a1*(1.0+e1);
+	hier->obj[1]->x[0] = 0.0;
+	hier->obj[1]->x[1] = 0.0;
+	hier->obj[1]->x[2] = dist*units.l;
+	
+	hier->obj[1]->v[0] = v[0]*units.l/units.t;
+	hier->obj[1]->v[1] = v[1]*units.l/units.t;
+	hier->obj[1]->v[2] = v[2]*units.l/units.t;
 
-	fb_init_scattering(hier->obj, W/vc, b, rtid);
+	/* get the units and normalize */
+	bmbh_calcunits(hier->obj, &fb_units);
+	fb_normalize(hier, fb_units);
+
+    /* This needs to be set here after fb_units is defined*/
+	input.tstop = time*units.t/fb_units.t; 
 	
 	/* trickle down the binary properties, then back up */
 	fb_randorient(&(hier->hier[hier->hi[2]+0]), rng, curr_st);

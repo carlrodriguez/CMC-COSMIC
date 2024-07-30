@@ -77,7 +77,7 @@ void write_rwalk_data(char *fname, long index, double Trel, double dt,
 * @param beta Deflection angle due to two-body relaxation in a given timestep.
 * @param dt MC timestep
 */
-void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt)
+void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng)
 { 
 	double w[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
@@ -90,6 +90,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	long is_in_ids;
 	double Trel, n_local, M2ave; 
 	double W, n_steps= 1.;
+    double t_conversion;
 	
 	is_in_ids= 0;
 	sprintf(fname, "%s.rwalk_steps.dat", outprefix);
@@ -128,6 +129,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	
 	/*Define L2 as the total quadratic deflection angle during a timestep*/
 	L2 = l2_scale*fb_sqr(beta);
+
+    /*coefficient to get time from quadratic angle deflection below*/
+    t_conversion = dt*((double) clus.N_STAR)/log(GAMMA * ((double) clus.N_STAR))/L2;
 	
 	if (BH_R_DISRUPT_NB>0.) {/*The default value of BH_R_DISRUPT_NB is 0*/
 		Rdisr= BH_R_DISRUPT_NB;
@@ -142,11 +146,11 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		} else {
 			Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
 		}
-		Rss=0;//TODO: no idea wtf this is... 4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l;
+		Rss=4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l; // Mass of MBH 
 		Rdisr= MAX(Rdisr, Rss);
 	} else {
 		Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
-	};
+	}
 
 	/*Calculate the angular momentum at the LC using eq. 27 from Freitag & Benz (2002)*/
 	Jlc= sqrt(2.*cenma.m*madhoc*Rdisr);
@@ -158,47 +162,103 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	}
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
+    int in_loss_cone=0;
+    double time_for_binary;
+
+    /* Fewbody part (only alloc if binary) */
+    fb_ret_t retval;
+    double t=0;
+    double a_old,e_old;
+    int binary_gone=0, was_binary=0; 
+    fb_hier_t hier;
+    hier.nstarinit = 3;
+
+    if(star[index].binind > 0){
+        fb_malloc_hier(&hier);
+        was_binary = 1;
+        a_old = binary[star[index].binind].a; 
+        e_old = binary[star[index].binind].e;
+    }
+
+
 	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/
-		
-		if (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc) { 
-			/*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
-			dprintf("index=%d, id=%ld: star eaten by BH\n", g_index, star[index].id);
-			cenma.m_new += star_m[g_index]; 
-			//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
-			//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here.  
-			cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+
+        /*If the tangential speed of the particle is less than vlc,the star has entered the loss cone and is disrupted */
+        in_loss_cone = (sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(w[1]+vcm[2])) <= vlc);
+
+        /*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
+        deltamax= 0.1*FB_CONST_PI;
+        deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
+        delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
+
+		if (in_loss_cone){
+
+            /* If we have a binary in the loss cone then take steps on order of p_orb */
+            delta = deltabeta_orb;
+
+			if(star[index].binind > 0) { //Binary
+
+                /*Figure out how long to run fewbody (how long is this step?)*/
+                time_for_binary = t_conversion*fb_sqr(delta);
+
+                /* Then call fewbody */
+                retval = binmbh(&t, index, w, star_r[g_index], &hier, rng, time_for_binary);
+
+                /* And analyze the output */
+                binary_gone = analyze_fewbody_output(&hier, &retval, index, t);
+
+                /* Finally write to file */
+                if(WRITE_BH_LOSSCONE_INFO && ((binary_gone == 2) || (binary_gone == 3)))
+                    parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
+
+                /* Binary is gone, end the random walk */ 
+                if(binary_gone){
+                    destroy_obj(index);
+                    L2 = 0.0; 
+                    /* free Fewbody memory */
+                }
+                
+
+			} else{ //Single
+				cenma.m_new += star_m[g_index]; 
+				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
+				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here.  
+				cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
 				2.0 * star_m[g_index] * madhoc;
 
-			
-			if(star[index].binind > 0 && WRITE_BH_LOSSCONE_INFO){ //Binary
-				parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
-				// dprintf(" binary!: %g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n ", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN,binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN ,binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
-			}
-	
-			else if (WRITE_BH_LOSSCONE_INFO){ //Single
-				parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
-				// dprintf("single!: %g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
-			}
-			destroy_obj(index);
-			L2 = 0.0; 
-		} else { 
-			deltamax= 0.1*FB_CONST_PI;
-			deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
-			/*The amplitude of the random walk step is calculated using eq. 31 of Freitag & Benz (2002).*/
-			delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
+                /* Destroy the star and complete the random walk */
+                destroy_obj(index);
+                L2 = 0.0; 
 
-			/*Set the direction of the random walk step by drawing a random angle dbeta*/
-			dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
+                /* Finally write to file */
+                if (WRITE_BH_LOSSCONE_INFO) 
+                    parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
+			}
+		}
 
-			do_random_step(w, dbeta, delta); 
-			L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
-		} 
-		
-	}; 
-	if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
-		write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
-				n_local, W, P_orb, n_orb);
-	}
+        /*Set the direction of the random walk step by drawing a random angle dbeta*/
+        dbeta = 2.0 * PI * rng_t113_dbl_new(curr_st); 
+
+        /* If not disrupted, take another random step and try again */
+        do_random_step(w, dbeta, delta); 
+
+		L2 -= fb_sqr(delta); /*L2 is updated after the random walk*/
+
+	} 
+
+    if(was_binary){ /* Only malloc if alloc above */
+        fb_free_hier(hier); 
+        /* NOTE: if the binary isn't changed, we should reset a/e to their original values for consistency */
+        if(binary_gone == 0){
+            binary[star[index].binind].a = a_old;
+            binary[star[index].binind].e = e_old;
+        }
+    }
+
+    if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
+            write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
+                    n_local, W, P_orb, n_orb);
+        }
 
 	/*Free up the star structure since we have already r_peri and r_apo in the bhlosscone file */
 	star[index].r_peri = 0.0;
@@ -591,4 +651,641 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t){
+    
+    int mbhid=0,binid=0,sinid=0;
+    /* One object -- either double TDE or the binary is unchanged 
+     * (and is technically in a triple with the MBH)*/
+        // Remember nobj is number of objects directly below this object, 
+        // n is the total number of stars under this (all things under the hierarchy)
+	star_t tempstar1, tempstar2;
+    int i;
+    double vs[20];
+    long knew, knew1, knew2;
+    double r_imbh_frame[3], v_imbh_frame[3], rhat[3], v_t[3];
+    double rmag, v_rmag;
+	char string1[1024], string2[1024];
 
+	fb_units_t cmc_units, printing_units;
+
+    /* This is needed to convert back from Fewbody units to CMC units*/
+    cmc_units.v = sqrt((cenma.m+star_m[get_global_idx(index)])/(cenma.m*star_m[get_global_idx(index)]) * 
+               (binary[star[index].binind].m1 * binary[star[index].binind].m2 / binary[star[index].binind].a) * madhoc);
+    cmc_units.l = binary[star[index].binind].a;
+    cmc_units.t = cmc_units.l / cmc_units.v;
+    cmc_units.m = cmc_units.l * sqr(cmc_units.v);
+    cmc_units.E = cmc_units.m * sqr(cmc_units.v);
+
+    /* And this takes us from Fewbody directly to CGS */
+	printing_units.v = cmc_units.v * units.l / units.t;
+	printing_units.l = cmc_units.l * units.l;
+	printing_units.t = cmc_units.t * units.t;
+	printing_units.m = cmc_units.m * units.m;
+	printing_units.E = cmc_units.E * units.E;
+
+    /* First check if the integration actually worked; return -1 if error */
+	if ( !( (fabs(retval->DeltaEfrac) < 1.0e-3 || fabs(retval->DeltaE) < 1.0e-3) && 
+		 (fabs(retval->DeltaLfrac) < 1.0e-3 || fabs(retval->DeltaL) < 1.0e-3) ) && 
+         (!((fabs(retval->DeltaE_GWfrac) > 1.0e-3 || fabs(retval->DeltaE_GW > 1.0e-3)
+            ) && retval->PN_ON == 1))) /* did we have a significant energy error that wasn't from gravitational waves? */
+    {
+		parafprintf(binintfile, "outcome: energy and/or angular momentum error\n");
+		print_interaction_error();
+        return -1;
+	} else if ( isnan(retval->DeltaE) || isnan(retval->DeltaL) ) {
+		parafprintf(binintfile, "outcome: NaN returned by fewbody\n");
+		print_interaction_error();
+        return -1;
+	} else /*NOTE: we are ignoring the normal fewbody encoutner not complete errors here*/ 
+		parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(*hier, string1), fb_sprint_hier_hr(*hier, string2));
+
+    double vesc;
+    vesc = sqrt(-2*star_phi[get_global_idx(index)]) * (units.l/units.t) / 1.0e5;
+
+	/* logging */
+	binint_log_status(*retval,vesc);
+    parafprintf(binintfile, "time_int:%g retval:%d\n",t,retval->retval);
+
+    for (i=0; i<hier->nobj; i++) {
+        /* logging */
+        parafprintf(binintfile, "output: ");
+        binint_log_obj(hier->obj[i], printing_units);
+    }
+
+    /* Five Cases -- 
+     *  --Binary unchanged  return 0
+     *  --Binary disrupted  return 1
+     *  --One TDE           return 2
+     *  --Two TDEs          return 3
+     *  --Binary merger     return 4
+     *  
+     *  Given this, it's easier to look for specific cases rather than generically process the full output */
+
+    // ONE BIG TODO:
+    // we're not differentiating between binary merger -> TDE versus both TDEs...
+
+    double MBH_TDE_ACCRETION = 0.5;//
+    // TODO: make this a parameter and set it *everywhere* (including inside fewbody)
+
+    if (hier->nobj == 1){ /* One top-level object */
+        if (hier->obj[0]->n == 1){ /* Only one star; either binary merger that's TDEd or double TDE*/
+            /*Add mass of binary to the MBH*/
+            cenma.m_new += MBH_TDE_ACCRETION*star_m[get_global_idx(index)]; 
+
+            /*Energy too*/
+            cenma.E_new +=  (2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+            2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint; /*I don't think the binary should have any internal energy, but better safe than sorry*/
+
+            /*Don't forget binding energy*/
+            cenma.E_new -= binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
+                / (2.0 * binary[star[index].binind].a) 
+                - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2;
+
+            /*Carl: TODO: double check minus sign there.
+             * Also, double check whether we need MBH_TDE_ACCRETION for cenma energy as well*/
+
+            /* Destroy the binary and complete the random walk */
+            destroy_obj(index);
+            return 3;
+
+        } else if (hier->obj[0]->n == 2){ /*Or maybe the binary merged or one TDE*/
+            if ((hier->obj[0]->obj[0]->id[0] == 0) && (hier->obj[0]->obj[0]->ncoll == 1)){
+                binid = 1;
+            } else if ((hier->obj[0]->obj[1]->id[0] == 0) && (hier->obj[0]->obj[1]->ncoll == 1)){
+                mbhid = 1;
+            }
+            if ((mbhid == 1) || (binid == 1)){ /*IMBH is unmerged, must be a binary merger*/
+
+                /* Create a new star for the binary merger*/
+				knew = create_star(index, 0);
+
+                /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+                for(i=0; i<3; i++){
+                    r_imbh_frame[i] = hier->obj[0]->obj[binid]->x[i] - hier->obj[0]->obj[mbhid]->x[i];
+                    v_imbh_frame[i] = hier->obj[0]->obj[binid]->v[i] - hier->obj[0]->obj[mbhid]->v[i];
+                }
+
+                rmag = fb_mod(r_imbh_frame);
+                for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+                /*Set radial position*/
+                star_r[get_global_idx(knew)] = rmag*cmc_units.l; 
+
+                /*Set velocities as well*/
+                v_rmag = fb_dot(rhat,v_imbh_frame);
+                for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+                star[knew].vr = v_rmag*cmc_units.v;
+                star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                /*Set mass; this gets overwritten below*/
+                star_m[get_global_idx(knew)] = hier->obj[0]->obj[binid]->m * cmc_units.m/madhoc;
+
+                /*set potential*/
+                star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
+
+                /* Calculate new energies by recomputing E = PE + KE using new velocity */
+                set_star_EJ(knew);
+
+                /* set rnew, vrnew, vtnew */
+                set_star_news(knew);
+                
+                /* I don't even know if this is necessary */
+                set_star_olds(knew);
+
+                /* mark stars as interacted */
+                star[knew].interacted = 1;
+                
+                /* Finally, actually merge the two stars using COSMIC */
+                cp_SEvars_to_star(index, 0, &tempstar1);
+                cp_m_to_star(index, 0, &tempstar1);
+                cp_SEvars_to_star(index, 1, &tempstar2);
+                cp_m_to_star(index, 1, &tempstar2);
+                merge_two_stars(&tempstar1, &tempstar2, &(star[knew]), vs, curr_st);
+                star[knew].vr += vs[3] * 1.0e5 / (units.l/units.t);
+                vt_add_kick(&(star[knew].vt),vs[1],vs[2], curr_st);
+
+                /* Destroy the original binary */
+                destroy_obj(index);
+
+                return 4;
+            } else { /*If not, then single TDE*/ 
+                /*find the unTDE'd star*/
+                if(hier->obj[0]->obj[0]->ncoll > 1)
+                    sinid = 1;
+                else 
+                    mbhid = 1;
+
+				knew = create_star(index, 0);
+                star[knew].id = hier->obj[0]->obj[sinid]->id[0];
+
+                /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+                for(i=0; i<3; i++){
+                    r_imbh_frame[i] = hier->obj[0]->obj[sinid]->x[i] - hier->obj[0]->obj[mbhid]->x[i];
+                    v_imbh_frame[i] = hier->obj[0]->obj[sinid]->v[i] - hier->obj[0]->obj[mbhid]->v[i];
+                }
+
+                rmag = fb_mod(r_imbh_frame);
+                for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+                /*Set radial position*/
+                star_r[get_global_idx(knew)] = rmag*cmc_units.l; 
+
+                /*Set velocities as well*/
+                v_rmag = fb_dot(rhat,v_imbh_frame);
+                for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+                star[knew].vr = v_rmag*cmc_units.v;
+                star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                /*Set mass*/
+                star_m[get_global_idx(knew)] = hier->obj[0]->obj[binid]->m * cmc_units.m/madhoc;
+
+                /*set potential*/
+                star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
+
+                /* Calculate new energies by recomputing E = PE + KE using new velocity */
+                set_star_EJ(knew);
+
+                /* set rnew, vrnew, vtnew */
+                set_star_news(knew);
+                
+                /* I don't even know if this is necessary */
+                set_star_olds(knew);
+
+                /* mark stars as interacted */
+                star[knew].interacted = 1;
+
+                /* Copy stellar evolution parameters from binary member */
+                if(hier->obj[0]->obj[sinid]->id[0] == binary[star[index].binind].id1)
+                    binid = 0;
+                else
+                    binid = 1;
+                cp_SEvars_to_newstar(index, binid, knew);
+
+                /*Add mass of other star to the MBH*/
+                cenma.m_new += hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc; 
+
+                /*Energy too*/
+                cenma.E_new += hier->obj[0]->obj[mbhid]->Eint * cmc_units.E; 
+                /*TODO: Note: this is not going to conserve the energy correctly, largely because
+                 * we're doing the encounter in a vacuum (i.e. not the cluster potential), and making
+                 * that transition already technicaly breaks energy conservation (since the binding
+                 * energy of the outer particle is different in fewbody vs CMC).  But then again,
+                 * accreting any fraction of the star other than 100% also breaks energy conservation
+                 * since we're not tracking the gas...
+                 *
+                 * For now, it's the best we can do*/
+
+                /* Destroy the original binary */
+                destroy_obj(index);
+
+                return 2; 
+            }
+        } else { /* If three objects then it's a triple!*/
+
+            /*first find the binary*/
+            if(hier->obj[0]->obj[0]->n == 1)
+                binid = 1;
+            else
+                sinid = 1;
+
+            if(hier->obj[0]->obj[sinid]->id[0] == 0){ /*if the single is the MBH, then the binary is unchanged*/
+                binary[star[index].binind].a = hier->obj[0]->obj[binid]->a * cmc_units.l;
+                binary[star[index].binind].e = hier->obj[0]->obj[binid]->e;
+                return 0;
+            }
+
+            if(hier->obj[0]->obj[binid]->obj[1]->id[0] == 0)
+                mbhid = 1;
+
+            /* Create both stars and re-insert into cluster */
+            knew1 = create_star(index, 0);
+            knew2 = create_star(index, 0);
+            star[knew1].id = hier->obj[0]->obj[sinid]->id[0];
+            star[knew2].id = hier->obj[0]->obj[binid]->obj[1-mbhid]->id[0]; /*1-mbhid gives the id of the star bound to the MBH*/
+
+            /* FIRST STAR (tertiary of triple) */
+            /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+            for(i=0; i<3; i++){
+                r_imbh_frame[i] = hier->obj[0]->obj[sinid]->x[i] - hier->obj[0]->obj[binid]->obj[mbhid]->x[i];
+                v_imbh_frame[i] = hier->obj[0]->obj[sinid]->v[i] - hier->obj[0]->obj[binid]->obj[mbhid]->v[i];
+            }
+
+            rmag = fb_mod(r_imbh_frame);
+            for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+            /*Set radial position*/
+            star_r[get_global_idx(knew1)] = rmag*cmc_units.l; 
+
+            /*Set velocities as well*/
+            v_rmag = fb_dot(rhat,v_imbh_frame);
+            for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+            star[knew1].vr = v_rmag*cmc_units.v;
+            star[knew1].vt = fb_mod(v_t)*cmc_units.v;
+
+            /* SECOND STAR (inner binary star) */
+            /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+            for(i=0; i<3; i++){
+                r_imbh_frame[i] = hier->obj[0]->obj[binid]->obj[1-mbhid]->x[i] - hier->obj[0]->obj[binid]->obj[mbhid]->x[i];
+                v_imbh_frame[i] = hier->obj[0]->obj[binid]->obj[1-mbhid]->v[i] - hier->obj[0]->obj[binid]->obj[mbhid]->v[i];
+            }
+
+            rmag = fb_mod(r_imbh_frame);
+            for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+            /*Set radial position*/
+            star_r[get_global_idx(knew2)] = rmag*cmc_units.l; 
+
+            /*Set velocities as well*/
+            v_rmag = fb_dot(rhat,v_imbh_frame);
+            for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+            star[knew2].vr = v_rmag*cmc_units.v;
+            star[knew2].vt = fb_mod(v_t)*cmc_units.v;
+
+            /*Set mass; this gets overwritten below*/
+            star_m[get_global_idx(knew1)] = hier->obj[0]->obj[sinid]->m * cmc_units.m/madhoc;
+            star_m[get_global_idx(knew2)] = hier->obj[0]->obj[binid]->obj[1-mbhid]->m * cmc_units.m/madhoc;
+
+            /*set potential*/
+            star_phi[get_global_idx(knew1)] = potential(star_r[get_global_idx(knew1)]);
+            star_phi[get_global_idx(knew2)] = potential(star_r[get_global_idx(knew2)]);
+
+            /* Calculate new energies by recomputing E = PE + KE using new velocity */
+            set_star_EJ(knew1);
+            set_star_EJ(knew2);
+
+            /* set rnew, vrnew, vtnew */
+            set_star_news(knew1);
+            set_star_news(knew2);
+            
+            /* I don't even know if this is necessary */
+            set_star_olds(knew1);
+            set_star_olds(knew2);
+
+            /* mark stars as interacted */
+            star[knew1].interacted = 1;
+            star[knew2].interacted = 1;
+
+            /* Copy stellar evolution parameters from binary member */
+            /* reusing binid here*/
+            if(hier->obj[0]->obj[sinid]->id[0] == binary[star[index].binind].id1)
+                binid = 0;
+            else
+                binid = 1;
+            cp_SEvars_to_newstar(index, binid, knew1);
+            cp_SEvars_to_newstar(index, 1-binid, knew2);
+
+            /* Destroy the original binary */
+            destroy_obj(index);
+
+            return 1;
+        }
+    } else if (hier->nobj == 2){ /* Two top-level objects */ 
+        if (hier->nstar == 3){ /*We have a binary and single; same code as above*/
+
+            if(hier->obj[0]->n == 1) /*first find the binary*/
+                binid = 1;
+            else 
+                sinid = 1;
+
+            if (hier->obj[sinid]->id[0] == 0){ /* If the single is the MBH, the binary was unchanged*/
+                binary[star[index].binind].a = hier->obj[binid]->a * cmc_units.l;
+                binary[star[index].binind].e = hier->obj[binid]->e;
+                return 0;
+            }
+
+            /* Otherwise we have an exchange*/
+            if(hier->obj[binid]->obj[1]->id[0] == 0)
+                mbhid = 1;
+
+            /* Create both stars and re-insert into cluster */
+            knew1 = create_star(index, 0);
+            knew2 = create_star(index, 0);
+            star[knew1].id = hier->obj[sinid]->id[0];
+            star[knew2].id = hier->obj[binid]->obj[1-mbhid]->id[0]; /*1-mbhid gives the id of the star bound to the MBH*/
+
+            /* FIRST STAR (tertiary of triple) */
+            /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+            for(i=0; i<3; i++){
+                r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[binid]->obj[mbhid]->x[i];
+                v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[binid]->obj[mbhid]->v[i];
+            }
+
+            rmag = fb_mod(r_imbh_frame);
+            for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+            /*Set radial position*/
+            star_r[get_global_idx(knew1)] = rmag*cmc_units.l; 
+
+            /*Set velocities as well*/
+            v_rmag = fb_dot(rhat,v_imbh_frame);
+            for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+            star[knew1].vr = v_rmag*cmc_units.v;
+            star[knew1].vt = fb_mod(v_t)*cmc_units.v;
+
+            /* SECOND STAR (inner binary star) */
+            /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+            for(i=0; i<3; i++){
+                r_imbh_frame[i] = hier->obj[binid]->obj[1-mbhid]->x[i] - hier->obj[binid]->obj[mbhid]->x[i];
+                v_imbh_frame[i] = hier->obj[binid]->obj[1-mbhid]->v[i] - hier->obj[binid]->obj[mbhid]->v[i];
+            }
+
+            rmag = fb_mod(r_imbh_frame);
+            for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+            /*Set radial position*/
+            star_r[get_global_idx(knew2)] = rmag*cmc_units.l; 
+
+            /*Set velocities as well*/
+            v_rmag = fb_dot(rhat,v_imbh_frame);
+            for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+            star[knew2].vr = v_rmag*cmc_units.v;
+            star[knew2].vt = fb_mod(v_t)*cmc_units.v;
+
+            /*Set mass*/
+            star_m[get_global_idx(knew1)] = hier->obj[sinid]->m * cmc_units.m/madhoc;
+            star_m[get_global_idx(knew2)] = hier->obj[binid]->obj[1-mbhid]->m * cmc_units.m/madhoc;
+
+            /*set potential*/
+            star_phi[get_global_idx(knew1)] = potential(star_r[get_global_idx(knew1)]);
+            star_phi[get_global_idx(knew2)] = potential(star_r[get_global_idx(knew2)]);
+
+            /* Calculate new energies by recomputing E = PE + KE using new velocity */
+            set_star_EJ(knew1);
+            set_star_EJ(knew2);
+
+            /* set rnew, vrnew, vtnew */
+            set_star_news(knew1);
+            set_star_news(knew2);
+            
+            /* I don't even know if this is necessary */
+            set_star_olds(knew1);
+            set_star_olds(knew2);
+
+            /* mark stars as interacted */
+            star[knew1].interacted = 1;
+            star[knew2].interacted = 1;
+
+            /* Copy stellar evolution parameters from binary member */
+            /* reusing binid here*/
+            if(hier->obj[0]->obj[sinid]->id[0] == binary[star[index].binind].id1)
+                binid = 0;
+            else
+                binid = 1;
+            cp_SEvars_to_newstar(index, binid, knew1);
+            cp_SEvars_to_newstar(index, 1-binid, knew2);
+
+            /* Destroy the original binary */
+            destroy_obj(index);
+
+            return 1;
+        } else { /*only two objects; must have been a merger (either binary or TDE)*/
+
+            if ((hier->obj[0]->id[0] == 0) && (hier->obj[0]->ncoll == 1))
+                sinid = 1;
+            else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 1))
+                mbhid = 1;
+            
+            if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects; the binary must have merged*/
+
+                    /* Create a new star for the binary merger*/
+                    knew = create_star(index, 0);
+
+                    /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+                    for(i=0; i<3; i++){
+                        r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[mbhid]->x[i];
+                        v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[mbhid]->v[i];
+                    }
+
+                    rmag = fb_mod(r_imbh_frame);
+                    for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+                    /*Set radial position*/
+                    star_r[get_global_idx(knew)] = rmag*cmc_units.l; 
+
+                    /*Set velocities as well*/
+                    v_rmag = fb_dot(rhat,v_imbh_frame);
+                    for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+                    star[knew].vr = v_rmag*cmc_units.v;
+                    star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                    /*Set mass; this gets overwritten below*/
+                    star_m[get_global_idx(knew)] = hier->obj[sinid]->m * cmc_units.m/madhoc;
+
+                    /*Binary merger, so set internal energy*/
+                    star[knew].Eint = hier->obj[sinid]->Eint*cmc_units.E;
+
+                    /*set potential*/
+                    star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
+
+                    /* Calculate new energies by recomputing E = PE + KE using new velocity */
+                    set_star_EJ(knew);
+
+                    /* set rnew, vrnew, vtnew */
+                    set_star_news(knew);
+                    
+                    /* I don't even know if this is necessary */
+                    set_star_olds(knew);
+
+                    /* mark stars as interacted */
+                    star[knew].interacted = 1;
+                    
+                    /* Finally, actually merge the two stars using COSMIC */
+                    cp_SEvars_to_star(index, 0, &tempstar1);
+                    cp_m_to_star(index, 0, &tempstar1);
+                    cp_SEvars_to_star(index, 1, &tempstar2);
+                    cp_m_to_star(index, 1, &tempstar2);
+                    merge_two_stars(&tempstar1, &tempstar2, &(star[knew]), vs, curr_st);
+                    star[knew].vr += vs[3] * 1.0e5 / (units.l/units.t);
+                    vt_add_kick(&(star[knew].vt),vs[1],vs[2], curr_st);
+
+                    /* Destroy the original binary */
+                    destroy_obj(index);
+
+                    return 4; 
+                } else { /*Must have been a single TDE*/
+
+                    /* find the remainind unTDE'd star and the MBH*/
+                    if(hier->obj[0]->ncoll > 1)
+                        sinid = 1;
+                    else 
+                        mbhid = 1;
+
+                    knew = create_star(index, 0);
+                    star[knew].id = hier->obj[sinid]->id[0];
+
+                    /*Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+                    for(i=0; i<3; i++){
+                        r_imbh_frame[i] = hier->obj[sinid]->x[i] - hier->obj[mbhid]->x[i];
+                        v_imbh_frame[i] = hier->obj[sinid]->v[i] - hier->obj[mbhid]->v[i];
+                    }
+
+                    rmag = fb_mod(r_imbh_frame);
+                    for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+                    /*Set radial position*/
+                    star_r[get_global_idx(knew)] = rmag*cmc_units.l; 
+
+                    /*Set velocities as well*/
+                    v_rmag = fb_dot(rhat,v_imbh_frame);
+                    for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+                    star[knew].vr = v_rmag*cmc_units.v;
+                    star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                    /*Set mass*/
+                    star_m[get_global_idx(knew)] = hier->obj[sinid]->m * cmc_units.m/madhoc;
+
+                    /*set potential*/
+                    star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
+
+                    /* Calculate new energies by recomputing E = PE + KE using new velocity */
+                    set_star_EJ(knew);
+
+                    /* set rnew, vrnew, vtnew */
+                    set_star_news(knew);
+                    
+                    /* I don't even know if this is necessary */
+                    set_star_olds(knew);
+
+                    /* mark stars as interacted */
+                    star[knew].interacted = 1;
+
+                    /* Copy stellar evolution parameters from binary member */
+                    if(hier->obj[sinid]->id[0] == binary[star[index].binind].id1)
+                        binid = 0;
+                    else
+                        binid = 1;
+                    cp_SEvars_to_newstar(index, binid, knew);
+
+                    /*Add mass of other star to the MBH*/
+                    cenma.m_new = hier->obj[mbhid]->m * cmc_units.m/madhoc; 
+
+                    /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
+                    cenma.E_new += hier->obj[mbhid]->Eint * cmc_units.E; 
+                    /*Same caveat on energy conservation as above*/
+
+                    /* Destroy the original binary */
+                    destroy_obj(index);
+
+                    return 2; 
+                }
+            } 
+    } else if (hier->nobj == 3){ /* Three unbound objects; can only be binary disruption*/
+
+        /*Here we can just cycle through the objects*/
+
+        int sinids[2];
+        int j=0;
+
+        for(i=0 ; i < 3 ; i++){ /*first find the MBH*/
+            if (hier->obj[i]->id[0] == 0)
+                mbhid = i;
+            else 
+                sinids[j++];
+        }
+
+        for(j=0 ; j < 2 ; i++){
+
+            /* Create star and re-insert into cluster */
+            knew = create_star(index, 0);
+            star[knew].id = hier->obj[sinids[j]]->id[0];
+
+            /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/
+            for(i=0; i<3; i++){
+                r_imbh_frame[i] = hier->obj[sinids[j]]->x[i] - hier->obj[mbhid]->x[i];
+                v_imbh_frame[i] = hier->obj[sinids[j]]->v[i] - hier->obj[mbhid]->v[i];
+            }
+
+            rmag = fb_mod(r_imbh_frame);
+            for(i=0; i<3; i++) rhat[i] = r_imbh_frame[i]/rmag;
+
+            /*Set radial position*/
+            star_r[get_global_idx(knew)] = rmag*cmc_units.l; 
+
+            /*Set velocities as well*/
+            v_rmag = fb_dot(rhat,v_imbh_frame);
+            for(i=0; i<3; i++) v_t[i] = v_imbh_frame[i] - rhat[i]*v_rmag;
+
+            star[knew].vr = v_rmag*cmc_units.v;
+            star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+            /*Set mass*/
+            star_m[get_global_idx(knew)] = hier->obj[sinids[j]]->m * cmc_units.m/madhoc;
+
+            /*set potential*/
+            star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
+
+            /* Calculate new energies by recomputing E = PE + KE using new velocity */
+            set_star_EJ(knew);
+
+            /* set rnew, vrnew, vtnew */
+            set_star_news(knew);
+            
+            /* I don't even know if this is necessary */
+            set_star_olds(knew);
+
+            /* mark stars as interacted */
+            star[knew].interacted = 1;
+
+            /* Copy stellar evolution parameters from binary member */
+            /* reusing binid here*/
+            if(hier->obj[sinids[j]]->id[0] == binary[star[index].binind].id1)
+                binid = 0;
+            else
+                binid = 1;
+            cp_SEvars_to_newstar(index, binid, knew);
+        }
+
+        /* Destroy the original binary */
+        destroy_obj(index);
+
+        return 1;
+    }
+}

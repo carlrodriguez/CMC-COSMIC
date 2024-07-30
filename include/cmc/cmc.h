@@ -1958,6 +1958,10 @@ fb_ret_t binsingle(double *t, long ksin, long kbin, double W, double bmax, fb_hi
 void bb_calcunits(fb_obj_t *obj[2], fb_units_t *bb_units);
 fb_ret_t binbin(double *t, long k, long kp, double W, double bmax, fb_hier_t *hier, gsl_rng *rng);
 
+void bmbh_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units);
+fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier, gsl_rng *rng, double time);
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t);
+
 double binint_get_mass(long k, long kp, long id);
 long binint_get_startype(long k, long kp, long id);
 long binint_get_indices(long k, long kp, long id, int *bi);
@@ -2019,7 +2023,7 @@ double calc_P_orb(long index);
 double calc_p_orb_f(double x, void *params);
 double calc_p_orb_f2(double x, void *params);
 double calc_p_orb_gc(double x, void *params);
-void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt);
+void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng);
 
 /* potential calculation speed-up*/
 long check_if_r_around_last_index(long last_index, double r);

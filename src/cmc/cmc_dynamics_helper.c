@@ -1636,7 +1636,7 @@ void binint_log_morecollision(const char interaction_type[], long remnant_id,
 				    rho0_c,rho1_c,rho0_env, rho1_env, 
 				    binint_get_startype(k,kp, obj.id[0]), binint_get_startype(k,kp, obj.id[1]), 
 				    remnant_id, remnant_mass * units.mstar / FB_CONST_MSUN, remnant_radius*units.l/RSUN, 
-				    rhor_c, rhor_env,remnant_type, W*units.l/units.t/1.e5, rperi*units.l/RSUN);
+				    rhor_c, rhor_env,remnant_type, W*units.l/units.t/1.e5, rperi*units.l/AU);
 				    
 }
 

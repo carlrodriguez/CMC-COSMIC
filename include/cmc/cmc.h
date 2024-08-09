@@ -1001,6 +1001,11 @@ typedef struct{
         int BH_R_DISRUPT_NB;
 #define PARAMDOC_FORCE_RLX_STEP "force a relaxation step (useful when RELAXATION=0) (0=off, 1=on)"
 /**
+* @brief Fraction of mass accreted by the MBH during a TDE. This is also used to calculate the fractional energy and momentum added (default=0.5)
+*/
+        double MBH_TDE_ACCRETION;
+#define PARAMDOC_MBH_TDE_ACCRETION "Fraction of mass accreted by the MBH during a TDE. This is also used to calculate the fractional energy and momentum added (default=0.5)."
+/**
 * @brief force a relaxation step (useful when RELAXATION=0) (0=off, 1=on)
 */
         int FORCE_RLX_STEP; 
@@ -1960,7 +1965,7 @@ fb_ret_t binbin(double *t, long k, long kp, double W, double bmax, fb_hier_t *hi
 
 void bmbh_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units);
 fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier, gsl_rng *rng, double time);
-int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t);
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3]);
 
 double binint_get_mass(long k, long kp, long id);
 long binint_get_startype(long k, long kp, long id);
@@ -1968,6 +1973,7 @@ long binint_get_indices(long k, long kp, long id, int *bi);
 void binint_log_obj(fb_obj_t *obj, fb_units_t units);
 void binint_log_status(fb_ret_t retval, double vesc);
 void binint_log_collision(const char interaction_type[], long id, double mass, double r, fb_obj_t obj, long k, long kp, long startype);
+void binint_log_morecollision(const char interaction_type[], long remnant_id, double remnant_mass, double remnant_radius, long remnant_type, double remnant_mc, double remnant_menv, double remnant_rc, double remnant_renv, fb_obj_t obj, long k, long kp, double W, double rperi);
 void binint_do(long k, long kp, double rperi, double w[4], double W, double rcm, double vcm[4], gsl_rng *rng);
 
 double simul_relax(gsl_rng *rng);

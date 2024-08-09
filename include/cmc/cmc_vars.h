@@ -309,6 +309,7 @@ _EXTERN_ long total_bisections;
 * @brief an optional switch to turn off black hole accretion but having a non-zero central mass
 */
 _EXTERN_ long BH_LOSS_CONE;
+_EXTERN_ double MBH_TDE_ACCRETION;
 _EXTERN_ double BH_R_DISRUPT_NB;
 /**
 * @brief force to use the relaxation step, even if relaxation is turned off

@@ -1275,6 +1275,10 @@ if(myid==0) {
 				PRINT_PARSED(PARAMDOC_BH_R_DISRUPT_NB);
 				sscanf(values, "%lf", &BH_R_DISRUPT_NB);
 				parsed.BH_R_DISRUPT_NB = 1;
+			} else if (strcmp(parameter_name, "MBH_TDE_ACCRETION")== 0) {
+				PRINT_PARSED(PARAMDOC_MBH_TDE_ACCRETION);
+				sscanf(values, "%li", &MBH_TDE_ACCRETION);
+				parsed.MBH_TDE_ACCRETION = 1;
 			} else if (strcmp(parameter_name, "FORCE_RLX_STEP")== 0) {
 				PRINT_PARSED(PARAMDOC_FORCE_RLX_STEP);
 				sscanf(values, "%i", &FORCE_RLX_STEP);
@@ -1683,6 +1687,7 @@ if(myid==0) {
 	CHECK_PARSED(ONLY_FORM_BH_THREEBODYBINARIES, 1, PARAMDOC_ONLY_FORM_BH_THREEBODYBINARIES);
 	// default - 1: three-body binary formation only allowed for black holes
 	CHECK_PARSED(BH_LOSS_CONE, 0, PARAMDOC_BH_LOSS_CONE);
+	CHECK_PARSED(MBH_TDE_ACCRETION, 0.5, PARAMDOC_MBH_TDE_ACCRETION);
 	CHECK_PARSED(MINIMUM_R, 0.0, PARAMDOC_MINIMUM_R);
 	CHECK_PARSED(BH_R_DISRUPT_NB, 0., PARAMDOC_BH_R_DISRUPT_NB);
 	CHECK_PARSED(CIRC_PERIOD_THRESHOLD, 1e-18, PARAMDOC_CIRC_PERIOD_THRESHOLD);
@@ -2508,11 +2513,11 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
                		pararootfprintf(morepulsarfile,"#1:tcount #2:TotalTime #3:binflag #4:id0 #5:id1 #6:m0[MSUN] #7:m1[MSUN] #8:B0[G] #9:B1[G] #10:P0[sec] #11:P1[sec] #12:startype0 #13:startype1 #14:a[AU] #15:ecc #16:radrol0 #17:radrol1 #18:dmdt0 #19:dmdt1 #20:r #21:vr #22:vt #23:bacc0 #24:bacc1 #25:tacc0 #26:tacc1 #27:formation0 #28:formation1\n");
                 /* print header */ //Elena
                 if (WRITE_MORECOLL_INFO)
-                        pararootfprintf(morecollfile,"#1:TotalTime #2:collision-type #3:id0 #4:id1 #5:m0[MSUN] #6:m1[MSUN] #7:rad1[RSUN] #8:rad2[RSUN] #9:rho0_c[MSUN/RSUN^3] #10:rho1_c[MSUN/RSUN^3] #11:rho0_env[MSUN/RSUN^3] #12:rho1_env[MSUN/RSUN^3] #13:kstar0 #14:kstar1 #15:idr #16:mr[MSUN] #17:radr[RSUN] #18:rhor_c[MSUN/RSUN^3] #19:rhor_env[MSUN/RSUN^3] #20:kstar, #21:vinf[km/s], #22:rperi\n");
+                        pararootfprintf(morecollfile,"#1:TotalTime #2:collision-type #3:id0 #4:id1 #5:m0[MSUN] #6:m1[MSUN] #7:rad1[RSUN] #8:rad2[RSUN] #9:rho0_c[MSUN/RSUN^3] #10:rho1_c[MSUN/RSUN^3] #11:rho0_env[MSUN/RSUN^3] #12:rho1_env[MSUN/RSUN^3] #13:kstar0 #14:kstar1 #15:idr #16:mr[MSUN] #17:radr[RSUN] #18:rhor_c[MSUN/RSUN^3] #19:rhor_env[MSUN/RSUN^3] #20:kstar, #21:vinf[km/s], #22:rperi[AU]\n");
 
 				if (WRITE_BH_LOSSCONE_INFO)
-						pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:r #4:id0 #5id1: #6:m0[MSUN] #7:m1[MSUN] #8:rad1[RSUN] #9:rad2[RSUN] #10:rad1_c[RSUN] #11:rad2_c[RSUN] #12:kstar0 #13:kstar1 #14:a[AU] #15:e #16:rperi[AU] #17:v_1 #18:v_2 #19:v_3 #20:E #21:J\n");
-
+						// pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:Outcome #4:r #5:id0 #6:id1 #7:m0[MSUN] #8:m1[MSUN] #9:rad0[RSUN] #10:rad1[RSUN] #11:rad0_c[RSUN] #12:rad1_c[RSUN] #13:kstar0 #14:kstar1 #15:a[AU] #16:e #17:rperi[AU] #18:w_0 #19:w_1 #20:w_2 #21:E #22:J\n");
+					pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:Outcome #4:MBH_m[MSUN] #5:r #6:id0 #7:id1 #8:m0[MSUN] #9:m1[MSUN] #10:rad0[RSUN] #11:rad1[RSUN] #12:rad0_c[RSUN] #13:rad1_c[RSUN] #14:kstar0 #15:kstar1 #16:a[AU] #17:e #18:rperi[AU] #19:w_0 #20:w_1 #21:w_2 #22:E #23:J\n");
 					}
 	}/*if(RESTART_TCOUNT == 0)*/
 

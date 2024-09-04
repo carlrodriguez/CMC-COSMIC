@@ -695,14 +695,17 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 		print_interaction_error();
         return -1;
 	} else /*NOTE: we are ignoring the normal fewbody encoutner not complete errors here*/ 
-		parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(*hier, string1), fb_sprint_hier_hr(*hier, string2));
-
+        if(t == 0.01){
+            parafprintf(binintfile, "outcome: Integration NOT Finished %s (%s)\n", fb_sprint_hier(*hier, string1), fb_sprint_hier_hr(*hier, string2));   
+        }
+        else{
+		    parafprintf(binintfile, "outcome: %s (%s)\n", fb_sprint_hier(*hier, string1), fb_sprint_hier_hr(*hier, string2));
+        }
     double vesc;
     vesc = sqrt(-2*star_phi[get_global_idx(index)]) * (units.l/units.t) / 1.0e5;
 
 	/* logging */
 	binint_log_status(*retval,vesc);
-    parafprintf(binintfile, "time_int:%g retval:%d\n",t,retval->retval);
 
     for (i=0; i<hier->nobj; i++) {
         /* logging */

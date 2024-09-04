@@ -205,11 +205,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                 retval = binmbh(&t, index, w, star_r[g_index], &hier, rng, time_for_binary);
 
                 /* And analyze the output */
-                binary_gone = analyze_fewbody_output(&hier, &retval, index, t);
-
-                /* Finally write to file */
-                if(WRITE_BH_LOSSCONE_INFO && ((binary_gone == 2) || (binary_gone == 3)))
-                    parafprintf(bhlossconefile, "%g 1 %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J);
+                binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w);
 
                 /* Binary is gone, end the random walk */ 
                 if(binary_gone){
@@ -220,19 +216,21 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                 
 
 			} else{ //Single
-				cenma.m_new += star_m[g_index]; 
+				cenma.m_new += MBH_TDE_ACCRETION*(star_m[g_index]); 
 				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
-				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here.  
+				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here. 
+                //TODO: Should we be adding only half the energy here? 
 				cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
 				2.0 * star_m[g_index] * madhoc;
+
+                /* Write to file */
+                if (WRITE_BH_LOSSCONE_INFO) 
+                    parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, w[0], w[1], w[2], star[index].E, star[index].J );
 
                 /* Destroy the star and complete the random walk */
                 destroy_obj(index);
                 L2 = 0.0; 
 
-                /* Finally write to file */
-                if (WRITE_BH_LOSSCONE_INFO) 
-                    parafprintf(bhlossconefile, "%g 0 %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, v[1], v[2], v[3], star[index].E, star[index].J );
 			}
 		}
 
@@ -651,7 +649,7 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
-int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t){
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3]){
     
     int mbhid=0,binid=0,sinid=0;
     /* One object -- either double TDE or the binary is unchanged 
@@ -724,15 +722,13 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
     // ONE BIG TODO:
     // we're not differentiating between binary merger -> TDE versus both TDEs...
 
-    double MBH_TDE_ACCRETION = 0.5;//
-    // TODO: make this a parameter and set it *everywhere* (including inside fewbody)
-
     if (hier->nobj == 1){ /* One top-level object */
         if (hier->obj[0]->n == 1){ /* Only one star; either binary merger that's TDEd or double TDE*/
             /*Add mass of binary to the MBH*/
             cenma.m_new += MBH_TDE_ACCRETION*star_m[get_global_idx(index)]; 
-
+            
             /*Energy too*/
+            /*TODO: should we only add half the energy here?*/
             cenma.E_new +=  (2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
             2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint; /*I don't think the binary should have any internal energy, but better safe than sorry*/
 
@@ -743,6 +739,10 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
             /*Carl: TODO: double check minus sign there.
              * Also, double check whether we need MBH_TDE_ACCRETION for cenma energy as well*/
+
+            /* Finally write to file */
+            if(WRITE_BH_LOSSCONE_INFO)
+                parafprintf(bhlossconefile, "%g 1 Two-TDE %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, w[0], w[1], w[2], star[index].E, star[index].J);
 
             /* Destroy the binary and complete the random walk */
             destroy_obj(index);
@@ -755,6 +755,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 mbhid = 1;
             }
             if ((mbhid == 1) || (binid == 1)){ /*IMBH is unmerged, must be a binary merger*/
+
+                /* Here, mbhid points to the MBH and binid points to the binary merger product*/
 
                 /* Create a new star for the binary merger*/
 				knew = create_star(index, 0);
@@ -777,6 +779,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
                 star[knew].vr = v_rmag*cmc_units.v;
                 star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                /*Set the ID of the new star*/
+                star[knew].id = star_get_merger_id_new(binary[star[index].binind].id1, binary[star[index].binind].id2);
 
                 /*Set mass; this gets overwritten below*/
                 star_m[get_global_idx(knew)] = hier->obj[0]->obj[binid]->m * cmc_units.m/madhoc;
@@ -805,6 +810,18 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 star[knew].vr += vs[3] * 1.0e5 / (units.l/units.t);
                 vt_add_kick(&(star[knew].vt),vs[1],vs[2], curr_st);
 
+                /*Write to Collision File*/
+                binint_log_collision("MBH-binary",
+						star[knew].id, star_m[get_global_idx(knew)],
+						star_r[get_global_idx(knew)],
+						*(hier->obj[0]->obj[binid]), index, index, star[knew].se_k);
+
+                if (WRITE_MORECOLL_INFO){
+						binint_log_morecollision("MBH-binary", star[knew].id,
+			  			star_m[get_global_idx(knew)], star[knew].rad, star[knew].se_k, star[knew].se_mc, 
+			  			star[knew].se_menv, star[knew].se_rc,star[knew].se_renv,*(hier->obj[0]->obj[binid]), index, index, *w, star[index].r_peri);
+			  			}
+ 
                 /* Destroy the original binary */
                 destroy_obj(index);
 
@@ -815,6 +832,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     sinid = 1;
                 else 
                     mbhid = 1;
+
+                 /* Here, mbhid points to the MBH that has TDE'd and sinid points to the single star*/
 
 				knew = create_star(index, 0);
                 star[knew].id = hier->obj[0]->obj[sinid]->id[0];
@@ -839,7 +858,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 star[knew].vt = fb_mod(v_t)*cmc_units.v;
 
                 /*Set mass*/
-                star_m[get_global_idx(knew)] = hier->obj[0]->obj[binid]->m * cmc_units.m/madhoc;
+                star_m[get_global_idx(knew)] = hier->obj[0]->obj[sinid]->m * cmc_units.m/madhoc;
 
                 /*set potential*/
                 star_phi[get_global_idx(knew)] = potential(star_r[get_global_idx(knew)]);
@@ -861,13 +880,17 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     binid = 0;
                 else
                     binid = 1;
+
+                 /* Here, binid points to the index of the single star in the original binary*/
+
                 cp_SEvars_to_newstar(index, binid, knew);
 
                 /*Add mass of other star to the MBH*/
-                cenma.m_new += hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc; 
-
+                cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
+                /* TODO: Elena, check if fewbdy has already added the prefacor for TDE accretion */
+        
                 /*Energy too*/
-                cenma.E_new += hier->obj[0]->obj[mbhid]->Eint * cmc_units.E; 
+                cenma.E_new += (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
                 /*TODO: Note: this is not going to conserve the energy correctly, largely because
                  * we're doing the encounter in a vacuum (i.e. not the cluster potential), and making
                  * that transition already technicaly breaks energy conservation (since the binding
@@ -876,6 +899,13 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                  * since we're not tracking the gas...
                  *
                  * For now, it's the best we can do*/
+
+                /* Finally write to file */
+                if(WRITE_BH_LOSSCONE_INFO)
+                    if(binid == 0)
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                    else
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
 
                 /* Destroy the original binary */
                 destroy_obj(index);
@@ -890,6 +920,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             else
                 sinid = 1;
 
+            /*Here, binid points to the binary, and sinid to th single object*/
+
             if(hier->obj[0]->obj[sinid]->id[0] == 0){ /*if the single is the MBH, then the binary is unchanged*/
                 binary[star[index].binind].a = hier->obj[0]->obj[binid]->a * cmc_units.l;
                 binary[star[index].binind].e = hier->obj[0]->obj[binid]->e;
@@ -898,6 +930,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
             if(hier->obj[0]->obj[binid]->obj[1]->id[0] == 0)
                 mbhid = 1;
+            
+            /*Here, mbhid points to MBH within the new binary*/
 
             /* Create both stars and re-insert into cluster */
             knew1 = create_star(index, 0);
@@ -975,6 +1009,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 binid = 0;
             else
                 binid = 1;
+
+            /*Here, binid points to index of the newly-single star in the original binary*/
+
             cp_SEvars_to_newstar(index, binid, knew1);
             cp_SEvars_to_newstar(index, 1-binid, knew2);
 
@@ -991,6 +1028,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             else 
                 sinid = 1;
 
+            /*Here, binid points to the new binary and sinid to the single object*/
+
             if (hier->obj[sinid]->id[0] == 0){ /* If the single is the MBH, the binary was unchanged*/
                 binary[star[index].binind].a = hier->obj[binid]->a * cmc_units.l;
                 binary[star[index].binind].e = hier->obj[binid]->e;
@@ -1000,6 +1039,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             /* Otherwise we have an exchange*/
             if(hier->obj[binid]->obj[1]->id[0] == 0)
                 mbhid = 1;
+
+            /*Here, mbhid points to the MBH in the new binary*/
 
             /* Create both stars and re-insert into cluster */
             knew1 = create_star(index, 0);
@@ -1077,6 +1118,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 binid = 0;
             else
                 binid = 1;
+
+            /*Here, binid points to the newly-single star in the original binary*/
+            
             cp_SEvars_to_newstar(index, binid, knew1);
             cp_SEvars_to_newstar(index, 1-binid, knew2);
 
@@ -1091,7 +1135,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             else if ((hier->obj[1]->id[0] == 0) && (hier->obj[1]->ncoll == 1))
                 mbhid = 1;
             
-            if ((mbhid == 1) || (binid == 1)){ /*The MBH is one of the top-level objects; the binary must have merged*/
+            /*Here, mbhid points to the MBH and sinid to the single merger product object*/
+
+            if ((mbhid == 1) || (sinid == 1)){ /*The MBH is one of the top-level objects; the binary must have merged*/
 
                     /* Create a new star for the binary merger*/
                     knew = create_star(index, 0);
@@ -1114,6 +1160,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
                     star[knew].vr = v_rmag*cmc_units.v;
                     star[knew].vt = fb_mod(v_t)*cmc_units.v;
+
+                    /*Set the ID of the new star*/
+                    star[knew].id = star_get_merger_id_new(binary[star[index].binind].id1, binary[star[index].binind].id2);
 
                     /*Set mass; this gets overwritten below*/
                     star_m[get_global_idx(knew)] = hier->obj[sinid]->m * cmc_units.m/madhoc;
@@ -1145,6 +1194,16 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     star[knew].vr += vs[3] * 1.0e5 / (units.l/units.t);
                     vt_add_kick(&(star[knew].vt),vs[1],vs[2], curr_st);
 
+                    /*Write to Collision File*/
+                    binint_log_collision("MBH-binary",
+						star[knew].id, star_m[get_global_idx(knew)],
+						star_r[get_global_idx(knew)],
+						*(hier->obj[1]), index, index, star[knew].se_k);
+                    if (WRITE_MORECOLL_INFO){
+						binint_log_morecollision("MBH-binary", star[knew].id,
+			  			star_m[get_global_idx(knew)], star[knew].rad, star[knew].se_k, star[knew].se_mc, 
+			  			star[knew].se_menv, star[knew].se_rc,star[knew].se_renv,*(hier->obj[sinid]), index, index, *w, star[index].r_peri);
+			  			}
                     /* Destroy the original binary */
                     destroy_obj(index);
 
@@ -1156,6 +1215,8 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                         sinid = 1;
                     else 
                         mbhid = 1;
+
+                    /*Here, mbhid points to the MBH and sinid to the newly-single star*/
 
                     knew = create_star(index, 0);
                     star[knew].id = hier->obj[sinid]->id[0];
@@ -1202,14 +1263,24 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                         binid = 0;
                     else
                         binid = 1;
+
+                    /*Here, binid points to the newly-single star in the original binary */
+
                     cp_SEvars_to_newstar(index, binid, knew);
 
                     /*Add mass of other star to the MBH*/
-                    cenma.m_new = hier->obj[mbhid]->m * cmc_units.m/madhoc; 
+                    cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
 
                     /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
-                    cenma.E_new += hier->obj[mbhid]->Eint * cmc_units.E; 
+                    cenma.E_new += (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
                     /*Same caveat on energy conservation as above*/
+                    /* TODO: Elena, check if fewbdy has already added the prefacor for TDE accretion */
+                    if(WRITE_BH_LOSSCONE_INFO)
+                    
+                    if(binid == 0)
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                    else
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
 
                     /* Destroy the original binary */
                     destroy_obj(index);

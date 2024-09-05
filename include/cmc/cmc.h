@@ -1003,7 +1003,7 @@ typedef struct{
 /**
 * @brief Fraction of mass accreted by the MBH during a TDE. This is also used to calculate the fractional energy and momentum added (default=0.5)
 */
-        double MBH_TDE_ACCRETION;
+        int MBH_TDE_ACCRETION;
 #define PARAMDOC_MBH_TDE_ACCRETION "Fraction of mass accreted by the MBH during a TDE. This is also used to calculate the fractional energy and momentum added (default=0.5)."
 /**
 * @brief force a relaxation step (useful when RELAXATION=0) (0=off, 1=on)

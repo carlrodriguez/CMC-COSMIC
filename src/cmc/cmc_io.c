@@ -1277,7 +1277,7 @@ if(myid==0) {
 				parsed.BH_R_DISRUPT_NB = 1;
 			} else if (strcmp(parameter_name, "MBH_TDE_ACCRETION")== 0) {
 				PRINT_PARSED(PARAMDOC_MBH_TDE_ACCRETION);
-				sscanf(values, "%li", &MBH_TDE_ACCRETION);
+				sscanf(values, "%lf", &MBH_TDE_ACCRETION);
 				parsed.MBH_TDE_ACCRETION = 1;
 			} else if (strcmp(parameter_name, "FORCE_RLX_STEP")== 0) {
 				PRINT_PARSED(PARAMDOC_FORCE_RLX_STEP);

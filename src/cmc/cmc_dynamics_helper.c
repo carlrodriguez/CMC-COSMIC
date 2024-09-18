@@ -1507,6 +1507,8 @@ void binint_log_obj(fb_obj_t *obj, fb_units_t units)
 		tgr=pow(10.0,8)*pow(obj->obj[bid]->a*units.l/AU,2.5)/(3.0*pow(mtriplein,1.5))*(1.0-pow(obj->obj[bid]->e,2));
 		epsgr=tlkquad/tgr;
 
+		/*EGP:Don't write to the triple file if the outside object is the MBH, this is not a true triple. */
+		if (strcmp(idstring3, "0") != 0 && BH_LOSS_CONE){
                 parafprintf(triplefile, "%.18g %g %g %g %g %g %g %g %g %g %g %g %d %d %d %g %g %g %g %g\n",
                         TotalTime, obj->obj[bid]->obj[0]->m*units.m/MSUN, obj->obj[bid]->obj[1]->m*units.m/MSUN, obj->obj[sid]->m*units.m/MSUN,
                         obj->obj[bid]->obj[0]->R*units.l/RSUN, obj->obj[bid]->obj[1]->R*units.l/RSUN, obj->obj[sid]->R*units.l/RSUN,
@@ -1514,6 +1516,7 @@ void binint_log_obj(fb_obj_t *obj, fb_units_t units)
                         obj->obj[bid]->e, obj->e, i12,
                         obj->obj[bid]->obj[0]->k_type, obj->obj[bid]->obj[1]->k_type, obj->obj[sid]->k_type,
 			tlkquad,tlkoct,epsoct,tgr,epsgr);
+		}
 	} else {
 		/* thankfully won't need to print out quads */
 		eprintf("Don't know how to print out object with >3 stars!\n");

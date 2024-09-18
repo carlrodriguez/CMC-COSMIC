@@ -79,7 +79,7 @@ void write_rwalk_data(char *fname, long index, double Trel, double dt,
 */
 void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng)
 { 
-	double w[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
+	double w[3], w_cl[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
 	double w_mag, l2_scale;
 	int i;
@@ -201,11 +201,16 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                 /*Figure out how long to run fewbody (how long is this step?)*/
                 time_for_binary = t_conversion*fb_sqr(delta);
 
+                /*Calculate the particle's velocity in the cluster center reference frame */
+                for (i=0; i<3; i++) {
+                    w_cl[i]= w[i]+ vcm[i+1];
+                }
+                
                 /* Then call fewbody */
-                retval = binmbh(&t, index, w, star_r[g_index], &hier, rng, time_for_binary);
+                retval = binmbh(&t, index, w_cl, star_r[g_index], &hier, rng, time_for_binary);
 
                 /* And analyze the output */
-                binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w);
+                binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w_cl);
 
                 /* Binary is gone, end the random walk */ 
                 if(binary_gone){
@@ -219,7 +224,6 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 				cenma.m_new += MBH_TDE_ACCRETION*(star_m[g_index]); 
 				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
 				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here. 
-                //TODO: Should we be adding only half the energy here? 
 				cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
 				2.0 * star_m[g_index] * madhoc;
 
@@ -890,7 +894,6 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
                 /*Add mass of other star to the MBH*/
                 cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
-                /* TODO: Elena, check if fewbdy has already added the prefacor for TDE accretion */
         
                 /*Energy too*/
                 cenma.E_new += (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
@@ -923,7 +926,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             else
                 sinid = 1;
 
-            /*Here, binid points to the binary, and sinid to th single object*/
+            /*Here, binid points to the binary, and sinid to the single object*/
 
             if(hier->obj[0]->obj[sinid]->id[0] == 0){ /*if the single is the MBH, then the binary is unchanged*/
                 binary[star[index].binind].a = hier->obj[0]->obj[binid]->a * cmc_units.l;
@@ -1277,7 +1280,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
                     cenma.E_new += (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
                     /*Same caveat on energy conservation as above*/
-                    /* TODO: Elena, check if fewbdy has already added the prefacor for TDE accretion */
+
                     if(WRITE_BH_LOSSCONE_INFO)
                     
                     if(binid == 0)
@@ -1302,13 +1305,15 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             if (hier->obj[i]->id[0] == 0)
                 mbhid = i;
             else 
-                sinids[j++];
+                sinids[j] = i;
+                j++;
         }
 
-        for(j=0 ; j < 2 ; i++){
+        for(j=0 ; j < 2 ; j++){
 
             /* Create star and re-insert into cluster */
             knew = create_star(index, 0);
+
             star[knew].id = hier->obj[sinids[j]]->id[0];
 
             /* Extract the position/velocity wrt the IMBH (assumed cluster center) from fewbody*/

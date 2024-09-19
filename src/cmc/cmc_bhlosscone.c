@@ -224,8 +224,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 				cenma.m_new += MBH_TDE_ACCRETION*(star_m[g_index]); 
 				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
 				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here. 
-				cenma.E_new +=  (2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
-				2.0 * star_m[g_index] * madhoc;
+                //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
+				cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+				2.0 * star_m[g_index] * madhoc);
 
                 /* Write to file */
                 if (WRITE_BH_LOSSCONE_INFO) 
@@ -735,9 +736,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             cenma.m_new += MBH_TDE_ACCRETION*star_m[get_global_idx(index)]; 
             
             /*Energy too*/
-            /*TODO: should we only add half the energy here?*/
-            cenma.E_new +=  (2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
-            2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint; /*I don't think the binary should have any internal energy, but better safe than sorry*/
+            //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
+            cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+            2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint); /*I don't think the binary should have any internal energy, but better safe than sorry*/
 
             /*Don't forget binding energy*/
             cenma.E_new -= binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
@@ -896,7 +897,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
         
                 /*Energy too*/
-                cenma.E_new += (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
+                cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
                 /*TODO: Note: this is not going to conserve the energy correctly, largely because
                  * we're doing the encounter in a vacuum (i.e. not the cluster potential), and making
                  * that transition already technicaly breaks energy conservation (since the binding
@@ -1278,7 +1279,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
 
                     /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
-                    cenma.E_new += (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
+                    cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
                     /*Same caveat on energy conservation as above*/
 
                     if(WRITE_BH_LOSSCONE_INFO)

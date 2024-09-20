@@ -1303,11 +1303,12 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
         int j=0;
 
         for(i=0 ; i < 3 ; i++){ /*first find the MBH*/
-            if (hier->obj[i]->id[0] == 0)
+            if (hier->obj[i]->id[0] == 0){
                 mbhid = i;
-            else 
+            }else{ 
                 sinids[j] = i;
                 j++;
+            }
         }
 
         for(j=0 ; j < 2 ; j++){

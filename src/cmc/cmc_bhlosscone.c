@@ -1121,7 +1121,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
             /* Copy stellar evolution parameters from binary member */
             /* reusing binid here*/
-            if(hier->obj[0]->obj[sinid]->id[0] == binary[star[index].binind].id1)
+            if(hier->obj[sinid]->id[0] == binary[star[index].binind].id1)
                 binid = 0;
             else
                 binid = 1;

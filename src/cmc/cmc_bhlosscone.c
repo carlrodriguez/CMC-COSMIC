@@ -741,9 +741,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
             2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint); /*I don't think the binary should have any internal energy, but better safe than sorry*/
 
             /*Don't forget binding energy*/
-            cenma.E_new -= binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
+            cenma.E_new -= MBH_TDE_ACCRETION * (binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
                 / (2.0 * binary[star[index].binind].a) 
-                - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2;
+                - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2);
 
             /*Carl: TODO: double check minus sign there.
              * Also, double check whether we need MBH_TDE_ACCRETION for cenma energy as well*/
@@ -908,12 +908,12 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                  * For now, it's the best we can do*/
 
                 /* Finally write to file */
-                if(WRITE_BH_LOSSCONE_INFO)
+                if(WRITE_BH_LOSSCONE_INFO){
                     if(binid == 1)
                         parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
                     else
                         parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
-
+                }
                 /* Destroy the original binary */
                 destroy_obj(index);
 
@@ -1205,7 +1205,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     binint_log_collision("MBH-binary",
 						star[knew].id, star_m[get_global_idx(knew)],
 						star_r[get_global_idx(knew)],
-						*(hier->obj[1]), index, index, star[knew].se_k);
+						*(hier->obj[sinid]), index, index, star[knew].se_k);
                     if (WRITE_MORECOLL_INFO){
 						binint_log_morecollision("MBH-binary", star[knew].id,
 			  			star_m[get_global_idx(knew)], star[knew].rad, star[knew].se_k, star[knew].se_mc, 
@@ -1282,13 +1282,13 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
                     /*Same caveat on energy conservation as above*/
 
-                    if(WRITE_BH_LOSSCONE_INFO)
+                    if(WRITE_BH_LOSSCONE_INFO){
                     
-                    if(binid == 1)
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
-                    else
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
-
+                        if(binid == 1)
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                        else
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                    }
                     /* Destroy the original binary */
                     destroy_obj(index);
 

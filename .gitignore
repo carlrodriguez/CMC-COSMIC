@@ -108,3 +108,8 @@ ENV/
 
 # macOs hidden system files
 .DS_Store
+
+#Ignore other directories 
+CMC/
+OmegaCen/
+src/fewbody-0.24/CMakeCache.txt

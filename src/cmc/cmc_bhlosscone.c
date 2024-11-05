@@ -82,6 +82,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	double w[3], w_cl[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
 	double w_mag, l2_scale;
+    double vr_temp, vt_temp, E_temp, J_temp, rperi_temp, a_temp, e_temp;
 	int i;
     int g_index;
 	g_index = get_global_idx(index);
@@ -229,9 +230,24 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 				2.0 * star_m[g_index] * madhoc);
 
                 /* Write to file */
-                if (WRITE_BH_LOSSCONE_INFO) 
-                    parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, star[index].r_peri * units.l / AU, w[0], w[1], w[2], star[index].E, star[index].J );
+                if (WRITE_BH_LOSSCONE_INFO){
 
+                    /*Update velocities in cluster reference frame */
+                    vr_temp = w[2] + vcm[3]; 
+                    vt_temp = sqrt(sqr(w[0] + vcm[1]) + sqr(w[1] + vcm[2]));
+
+                    E_temp = -(cenma.m * madhoc)/star_r[g_index] + 0.5 * (sqr(vr_temp) + sqr(vt_temp));
+	                J_temp = star_r[g_index] * vt_temp;
+
+                    a_temp = -(cenma.m * madhoc) / (2 * E_temp); /*in code units */
+                    e_temp = sqrt(1 - (sqr(J_temp)/(a_temp * cenma.m * madhoc)));
+
+                    rperi_temp = a_temp * (1 - e_temp); /*in code units */
+                    rperi_temp *= units.l / AU ; /*in AU */
+
+                    parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi_temp, w[0] + vcm[1], w[1] + vcm[2], w[2] + vcm[3], E_temp, J_temp);
+
+                }
                 /* Destroy the star and complete the random walk */
                 destroy_obj(index);
                 L2 = 0.0; 

@@ -82,7 +82,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	double w[3], w_cl[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
 	double w_mag, l2_scale;
-    double vr_temp, vt_temp, E_temp, J_temp, rperi_temp, a_temp, e_temp;
+    double E_temp=0., J_temp=0., rperi_temp;
 	int i;
     int g_index;
 	g_index = get_global_idx(index);
@@ -92,6 +92,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	double Trel, n_local, M2ave; 
 	double W, n_steps= 1.;
     double t_conversion;
+    double full_disruption_flag = 0.; /*Flag used to indicate cases where the tidal disruption radius (Rdisr) is less than the Schwarscild radius (Rss). In these cases, the star will be fully disrupted and all of its mass will be added to the central MBH. If this flag is 0, then we use the standard MBH_TDE_ACCRETION prefactor.   */
 	
 	is_in_ids= 0;
 	sprintf(fname, "%s.rwalk_steps.dat", outprefix);
@@ -147,7 +148,10 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		} else {
 			Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
 		}
-		Rss=4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l; // Mass of MBH 
+		Rss=4.24e-06*cenma.m/SOLAR_MASS_DYN*RSUN/units.l; //Schwarzschild radius, 4.24e-06 is 2G/c^2 in units of Rsun/Msun
+        if(Rss > Rdisr){ /*If the star's disruption radius is within the Schwarzschild radius, we will acccrette all mass. */
+            full_disruption_flag = 1.;
+        }
 		Rdisr= MAX(Rdisr, Rss);
 	} else {
 		Rdisr= pow(2.*cenma.m/star_m[g_index], 1./3.)*star[index].rad;
@@ -197,21 +201,21 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
             /* If we have a binary in the loss cone then take steps on order of p_orb */
             delta = deltabeta_orb;
 
+            /*Calculate the particle's velocity in the cluster center reference frame */
+                for (i=0; i<3; i++) {
+                    w_cl[i]= w[i]+ vcm[i+1];
+                }
+
 			if(star[index].binind > 0) { //Binary
 
                 /*Figure out how long to run fewbody (how long is this step?)*/
                 time_for_binary = t_conversion*fb_sqr(delta);
 
-                /*Calculate the particle's velocity in the cluster center reference frame */
-                for (i=0; i<3; i++) {
-                    w_cl[i]= w[i]+ vcm[i+1];
-                }
-                
                 /* Then call fewbody */
                 retval = binmbh(&t, index, w_cl, star_r[g_index], &hier, rng, time_for_binary);
 
                 /* And analyze the output */
-                binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w_cl);
+                binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w_cl, full_disruption_flag, Rdisr);
 
                 /* Binary is gone, end the random walk */ 
                 if(binary_gone){
@@ -222,30 +226,24 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                 
 
 			} else{ //Single
-				cenma.m_new += MBH_TDE_ACCRETION*(star_m[g_index]); 
-				//TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
-				//changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here. 
-                //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
-				cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
-				2.0 * star_m[g_index] * madhoc);
 
+                if (full_disruption_flag == 1.){ /*Then add the entire mass*/
+                    cenma.m_new += (star_m[g_index]); 
+                    cenma.E_new += ((2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 2.0 * star_m[g_index] * madhoc);
+                
+                }else{/*Then use MBH_TDE_ACCRETION*/
+                    cenma.m_new += MBH_TDE_ACCRETION*(star_m[g_index]); 
+                    //TODO: SMBH: this is just for bookkeeping (to track the energy deleted by destroying stars).  HOWEVER, the energy of the cluster also 
+                    //changes by virtue of the fact that you're increasing the SMBH mass.  It's possible we're double counting here. 
+                    //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
+                    cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+                    2.0 * star_m[g_index] * madhoc);
+                }
                 /* Write to file */
                 if (WRITE_BH_LOSSCONE_INFO){
-
-                    /*Update velocities in cluster reference frame */
-                    vr_temp = w[2] + vcm[3]; 
-                    vt_temp = sqrt(sqr(w[0] + vcm[1]) + sqr(w[1] + vcm[2]));
-
-                    E_temp = -(cenma.m * madhoc)/star_r[g_index] + 0.5 * (sqr(vr_temp) + sqr(vt_temp));
-	                J_temp = star_r[g_index] * vt_temp;
-
-                    a_temp = -(cenma.m * madhoc) / (2 * E_temp); /*in code units */
-                    e_temp = sqrt(1 - (sqr(J_temp)/(a_temp * cenma.m * madhoc)));
-
-                    rperi_temp = a_temp * (1 - e_temp); /*in code units */
-                    rperi_temp *= units.l / AU ; /*in AU */
-
-                    parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi_temp, w[0] + vcm[1], w[1] + vcm[2], w[2] + vcm[3], E_temp, J_temp);
+                    /*Get the Keplerian properties of the orbit that led to the disruption*/
+                    rperi_temp = get_Keplerian(w_cl, g_index, &E_temp, &J_temp);
+                    parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g %g\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi_temp * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_temp, J_temp, Rdisr * units.l / RSUN);
 
                 }
                 /* Destroy the star and complete the random walk */
@@ -283,6 +281,30 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	star[index].r_peri = 0.0;
 	star[index].r_apo = 0.0;
 
+};
+
+/**
+* @brief Function that calculates E, J and rperi of a Keplerian orbit. Currently used to write to the bhlosscone file when a TDE happens. 
+*
+* @param w_cl The particle's velocity in the cluster center reference frame 
+* @param g_index Star's global index
+*/
+double get_Keplerian(double w_cl[3], int g_index, double *E_temp, double *J_temp) {
+    double vr_temp, vt_temp, rperi_temp, a_temp, e_temp;
+
+    /*Update velocities in cluster reference frame */
+    vr_temp = w_cl[2]; 
+    vt_temp = sqrt(sqr(w_cl[0]) + sqr(w_cl[1]));
+
+    *E_temp = -(cenma.m * madhoc)/star_r[g_index] + 0.5 * (sqr(vr_temp) + sqr(vt_temp)); /* in code units */
+    *J_temp = star_r[g_index] * vt_temp; /* in code units */
+
+    a_temp = -(cenma.m * madhoc) / (2 * (*E_temp)); /* in code units */
+    e_temp = sqrt(1 - (sqr(*J_temp)/(a_temp * cenma.m * madhoc)));
+
+    rperi_temp = a_temp * (1 - e_temp); /* in code units */
+
+    return rperi_temp;
 };
 
 /* here the notation of Freitag & Benz (2002) is used */
@@ -670,7 +692,7 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
-int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3]){
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3], double full_disruption_flag, double Rdisr){
     
     int mbhid=0,binid=0,sinid=0;
     /* One object -- either double TDE or the binary is unchanged 
@@ -684,6 +706,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
     double r_imbh_frame[3], v_imbh_frame[3], rhat[3], v_t[3];
     double rmag, v_rmag;
 	char string1[1024], string2[1024];
+    double E_temp=0., J_temp=0., rperi_temp;
+    int g_index;
+	g_index = get_global_idx(index);
 
 	fb_units_t cmc_units, printing_units;
 
@@ -749,25 +774,40 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
     if (hier->nobj == 1){ /* One top-level object */
         if (hier->obj[0]->n == 1){ /* Only one star; either binary merger that's TDEd or double TDE*/
             /*Add mass of binary to the MBH*/
-            cenma.m_new += MBH_TDE_ACCRETION*star_m[get_global_idx(index)]; 
+            if (full_disruption_flag == 1.){ /*Then add the entire mass*/
+                cenma.m_new += star_m[get_global_idx(index)]; 
+                
+                /*Energy too*/
+                cenma.E_new += ((2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+                2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint); /*I don't think the binary should have any internal energy, but better safe than sorry*/
+
+                /*Don't forget binding energy*/
+                cenma.E_new -= (binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
+                    / (2.0 * binary[star[index].binind].a) 
+                    - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2);
+
+            }else{/*Then use MBH_TDE_ACCRETION*/
+                cenma.m_new += MBH_TDE_ACCRETION*star_m[get_global_idx(index)]; 
+                
+                /*Energy too*/
+                //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
+                cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
+                2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint); /*I don't think the binary should have any internal energy, but better safe than sorry*/
+
+                /*Carl: TODO: double check minus sign there.
+                /*Don't forget binding energy*/
+                cenma.E_new -= MBH_TDE_ACCRETION * (binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
+                    / (2.0 * binary[star[index].binind].a) 
+                    - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2);
+            }
             
-            /*Energy too*/
-            //TODO: For now, we simply multiply the energy by MBH_TDE_ACCRETION, but something more accurate needs to be done in the future. 
-            cenma.E_new +=  MBH_TDE_ACCRETION * ((2.0*star_phi[get_global_idx(index)] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) / 
-            2.0 * star_m[get_global_idx(index)] * madhoc + star[index].Eint); /*I don't think the binary should have any internal energy, but better safe than sorry*/
-
-            /*Don't forget binding energy*/
-            cenma.E_new -= MBH_TDE_ACCRETION * (binary[star[index].binind].m1 * binary[star[index].binind].m2 * sqr(madhoc) 
-                / (2.0 * binary[star[index].binind].a) 
-                - binary[star[index].binind].Eint1 - binary[star[index].binind].Eint2);
-
-            /*Carl: TODO: double check minus sign there.
-             * Also, double check whether we need MBH_TDE_ACCRETION for cenma energy as well*/
 
             /* Finally write to file */
-            if(WRITE_BH_LOSSCONE_INFO)
-                parafprintf(bhlossconefile, "%g 1 Two-TDE %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU, w[0], w[1], w[2], star[index].E, star[index].J);
-
+            if(WRITE_BH_LOSSCONE_INFO){
+                /*Get the Keplerian properties of the orbit that led to the disruption*/
+                rperi_temp = get_Keplerian(w, g_index, &E_temp, &J_temp); /*Note w here is w_cl from bh_rand_walk*/
+                parafprintf(bhlossconefile, "%g 1 Two-TDE %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_radc[1] * units.l / RSUN, binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_temp * units.l / RSUN, w[0], w[1], w[2], E_temp, J_temp, Rdisr * units.l / RSUN);
+            }
             /* Destroy the binary and complete the random walk */
             destroy_obj(index);
             return 3;
@@ -909,26 +949,37 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
                 cp_SEvars_to_newstar(index, binid, knew);
 
-                /*Add mass of other star to the MBH*/
-                cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
-        
-                /*Energy too*/
-                cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
-                /*TODO: Note: this is not going to conserve the energy correctly, largely because
-                 * we're doing the encounter in a vacuum (i.e. not the cluster potential), and making
-                 * that transition already technicaly breaks energy conservation (since the binding
-                 * energy of the outer particle is different in fewbody vs CMC).  But then again,
-                 * accreting any fraction of the star other than 100% also breaks energy conservation
-                 * since we're not tracking the gas...
-                 *
-                 * For now, it's the best we can do*/
+                if (full_disruption_flag == 1.){ /*Then add the entire mass*/
+                    /*Add mass of other star to the MBH*/
+                    cenma.m_new += (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
+                    /*Energy too*/
+                    cenma.E_new += (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
 
+                }else{/*Then use MBH_TDE_ACCRETION*/
+                    /*Add mass of other star to the MBH*/
+                    cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
+            
+                    /*Energy too*/
+                    cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[0]->obj[mbhid]->Eint * cmc_units.E - cenma.E); /* the object already accounts for the energy of the mbh, so we want to add only the difference */
+                    /*TODO: Note: this is not going to conserve the energy correctly, largely because
+                    * we're doing the encounter in a vacuum (i.e. not the cluster potential), and making
+                    * that transition already technicaly breaks energy conservation (since the binding
+                    * energy of the outer particle is different in fewbody vs CMC).  But then again,
+                    * accreting any fraction of the star other than 100% also breaks energy conservation
+                    * since we're not tracking the gas...
+                    *
+                    * For now, it's the best we can do*/
+                }       
                 /* Finally write to file */
                 if(WRITE_BH_LOSSCONE_INFO){
-                    if(binid == 1)
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
-                    else
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                    /*Get the Keplerian properties of the orbit that led to the disruption*/
+                     rperi_temp = get_Keplerian(w, g_index, &E_temp, &J_temp); /*Note w here is w_cl from bh_rand_walk*/
+
+                    if(binid == 1){
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_temp * units.l / RSUN, w[0], w[1], w[2], E_temp, J_temp, Rdisr * units.l / RSUN);
+                    }else{
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_temp * units.l / RSUN, w[0], w[1], w[2], E_temp, J_temp, Rdisr * units.l / RSUN);
+                    }
                 }
                 /* Destroy the original binary */
                 destroy_obj(index);
@@ -1291,19 +1342,29 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
                     cp_SEvars_to_newstar(index, binid, knew);
 
-                    /*Add mass of other star to the MBH*/
-                    cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
+                    if (full_disruption_flag == 1.){ /*Then add the entire mass*/
+                        /*Add mass of other star to the MBH*/
+                        cenma.m_new += (hier->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
 
-                    /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
-                    cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
-                    /*Same caveat on energy conservation as above*/
+                        /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
+                        cenma.E_new += (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
 
+                    }else{/*Then use MBH_TDE_ACCRETION*/
+                        /*Add mass of other star to the MBH*/
+                        cenma.m_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->m * cmc_units.m/madhoc - cenma.m); /* the object already accounts for the mass of the mbh, so we want to add only the difference */
+
+                        /*Energy too, note here we're incrementing the internal energy (which was zero initially)*/
+                        cenma.E_new += MBH_TDE_ACCRETION * (hier->obj[mbhid]->Eint * cmc_units.E - cenma.E); 
+                        /*Same caveat on energy conservation as above*/
+                    }
                     if(WRITE_BH_LOSSCONE_INFO){
-                    
-                        if(binid == 1)
-                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
-                        else
-                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, star[index].r_peri * units.l / AU,  w[0], w[1], w[2], star[index].E, star[index].J);
+                        /*Get the Keplerian properties of the orbit that led to the disruption*/
+                        rperi_temp = get_Keplerian(w, g_index, &E_temp, &J_temp); /*Note w here is w_cl from bh_rand_walk*/
+                        if(binid == 1){
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0] * units.l / RSUN , binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_temp * units.l / RSUN, w[0], w[1], w[2], E_temp, J_temp, Rdisr * units.l / RSUN);
+                        }else{
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1] * units.l / RSUN,  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_temp * units.l / RSUN, w[0], w[1], w[2], E_temp, J_temp, Rdisr * units.l / RSUN);
+                        }
                     }
                     /* Destroy the original binary */
                     destroy_obj(index);

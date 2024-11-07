@@ -1623,7 +1623,7 @@ if(myid==0) {
 	
 	CHECK_PARSED(GAMMA);
 	CHECK_PARSED(INPUT_FILE);
-	CHECK_PARSED(MASS_PC);
+	CHECK_PARSED(MASS_PC)
 	CHECK_PARSED(MASS_BINS);
 
 #undef CHECK_PARSED
@@ -2517,7 +2517,7 @@ MPI: In the parallel version, IO is done in the following way. Some files requir
 
 				if (WRITE_BH_LOSSCONE_INFO)
 						// pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:Outcome #4:r #5:id0 #6:id1 #7:m0[MSUN] #8:m1[MSUN] #9:rad0[RSUN] #10:rad1[RSUN] #11:rad0_c[RSUN] #12:rad1_c[RSUN] #13:kstar0 #14:kstar1 #15:a[AU] #16:e #17:rperi[AU] #18:w_0 #19:w_1 #20:w_2 #21:E #22:J\n");
-					pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:Outcome #4:MBH_m[MSUN] #5:r #6:id0 #7:id1 #8:m0[MSUN] #9:m1[MSUN] #10:rad0[RSUN] #11:rad1[RSUN] #12:rad0_c[RSUN] #13:rad1_c[RSUN] #14:kstar0 #15:kstar1 #16:a[AU] #17:e #18:rperi[AU] #19:w_0 #20:w_1 #21:w_2 #22:E #23:J\n");
+					pararootfprintf(bhlossconefile,"#1:TotalTime #2:binflag #3:Outcome #4:MBH_m[MSUN] #5:r #6:id0 #7:id1 #8:m0[MSUN] #9:m1[MSUN] #10:rad0[RSUN] #11:rad1[RSUN] #12:rad0_c[RSUN] #13:rad1_c[RSUN] #14:kstar0 #15:kstar1 #16:a[AU] #17:e #18:rperi[RSUN] #19:v_0 #20:v_1 #21:v_2 #22:E #23:J #24:Rdisr[RSUN]\n");
 					}
 	}/*if(RESTART_TCOUNT == 0)*/
 

@@ -204,7 +204,7 @@ extern struct { double scm[14][50000], spp[3][20]; } single_;
 extern struct { double bcm[BCM_NUM_COLUMNS][BCM_NUM_ROWS], bpp[BPP_NUM_COLUMNS][BPP_NUM_ROWS]; } binary_;
 extern struct { int n_col_bpp,col_inds_bpp[BCM_NUM_COLUMNS], n_col_bcm,col_inds_bcm[BCM_NUM_COLUMNS]; } col_;
 extern struct { double merger; long int id1_pass, id2_pass; long int using_cmc; } cmcpass_;
-extern struct { int using_sse; int using_metisse; } se_flags_;
+extern struct { int using_metisse; int using_sse; } se_flags_;
 
 /* setters */
 void bse_set_idum(int idum); /* RNG seed (for NS birth kicks) */

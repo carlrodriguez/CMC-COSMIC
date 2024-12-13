@@ -187,7 +187,7 @@ void stellar_evolution_init(void){
   bse_set_gamma(BSE_GAMMA);
   bse_set_merger(-1.0);
   bse_set_stellar_engine(STELLAR_ENGINE);
-  
+
   /* set parameters relating to metallicity */
   zpars = (double *) malloc(20 * sizeof(double));
   bse_zcnsts(&METALLICITY, zpars, PATH_TO_TRACKS, PATH_TO_HE_TRACKS);

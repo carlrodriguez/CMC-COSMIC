@@ -1,4 +1,4 @@
-[submodule "src/bse_wrap/bse/COSMIC"]
+[submodule "bse_wrap/bse/COSMIC"]
     path = src/bse_wrap/bse/COSMIC
     url = https://github.com/COSMIC-PopSynth/COSMIC.git
     branch = METISSE-integrate

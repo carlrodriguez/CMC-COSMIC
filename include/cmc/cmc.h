@@ -778,6 +778,25 @@ typedef struct{
 * Needs: Time[Myr] Radius[Kpc] V_circ[km/s] M_enc[solMass] sigma[km/s] J[Kpc*km/s]  
 */
 	int DF_FILE;
+#define PARAMDOC_STELLAR_ENGINE "Stellar Engine for Stellar Evolution"
+/**
+* @brief Which single-star evolution to use in BSE 
+* 0 = SSE
+* 1 = METISSE
+*/
+	int STELLAR_ENGINE;
+#define PARAMDOC_PATH_TO_TRACKS "Absolute path to the main sequence tracks"
+/**
+* @brief The absolute path to the main sequence stellar evolution tracks used for METISSE 
+* Only used if STELLAR_ENGINE=1 
+*/
+	int PATH_TO_TRACKS;
+#define PARAMDOC_PATH_TO_HE_TRACKS "Absolute path to the helium tracks"
+/**
+* @brief The absolute path to the HE star stellar evolution tracks used for METISSE
+* Only used if STELLAR_ENGINE=1 
+*/
+	int PATH_TO_HE_TRACKS;
 #define PARAMDOC_DF_INTEGRATED_CRITERION "Dynamical Friction termination criterion"
 /**
 * @brief How do we decide the cluster has spiraled into the galaxy: when 

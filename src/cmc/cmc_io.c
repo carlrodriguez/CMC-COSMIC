@@ -1221,6 +1221,28 @@ if(myid==0) {
 				PRINT_PARSED(PARAMDOC_TERMINAL_ENERGY_DISPLACEMENT);
 				sscanf(values, "%lf", &TERMINAL_ENERGY_DISPLACEMENT);
 				parsed.TERMINAL_ENERGY_DISPLACEMENT = 1;
+			} else if  (strcmp(parameter_name, "STELLAR_ENGINE") == 0) {
+			 	PRINT_PARSED(PARAMDOC_STELLAR_ENGINE);
+				sscanf(values, "%ld", &STELLAR_ENGINE);
+				parsed.STELLAR_ENGINE = 1;
+			} else if (strcmp(parameter_name, "PATH_TO_TRACKS") == 0) {
+				PRINT_PARSED(PARAMDOC_PATH_TO_TRACKS);
+				if (strncmp(values, "NULL", 4) == 0) {
+					PATH_TO_TRACKS = NULL;
+				} else{
+					PATH_TO_TRACKS = (char *) malloc(sizeof(char)*256);
+					strncpy(PATH_TO_TRACKS, values, 256);//If you change size you need to change it in metisse as well
+				}
+				parsed.PATH_TO_TRACKS= 1;
+			} else if (strcmp(parameter_name, "PATH_TO_HE_TRACKS") == 0) {
+				PRINT_PARSED(PARAMDOC_PATH_TO_HE_TRACKS);
+				if (strncmp(values, "NULL", 4) == 0) {
+					PATH_TO_HE_TRACKS = NULL;
+				} else{
+					PATH_TO_HE_TRACKS = (char *) malloc(sizeof(char)*256);
+					strncpy(PATH_TO_HE_TRACKS, values, 256);//if you change size of char you need to change it in metisse as well
+				}
+				parsed.PATH_TO_HE_TRACKS= 1;
 			} else if (strcmp(parameter_name, "T_MAX") == 0) {
 				PRINT_PARSED(PARAMDOC_T_MAX);
 				sscanf(values, "%lf", &T_MAX);
@@ -1694,6 +1716,7 @@ if(myid==0) {
 	CHECK_PARSED(STAR_AGING_SCHEME, 0, PARAMDOC_STAR_AGING_SCHEME);
 	CHECK_PARSED(SAMPLESIZE, 1024, PARAMDOC_SAMPLESIZE);
 	CHECK_PARSED(PREAGING, 0, PARAMDOC_PREAGING);
+	CHECK_PARSED(STELLAR_ENGINE, 0, PARAMDOC_STELLAR_ENGINE);
 	CHECK_PARSED(BINBIN, 1, PARAMDOC_BINBIN);
 	CHECK_PARSED(BINSINGLE, 1, PARAMDOC_BINSINGLE);
 	CHECK_PARSED(STREAMS, 1, PARAMDOC_STREAMS);
@@ -1736,6 +1759,8 @@ if(myid==0) {
 	CHECK_PARSED(IDUM, 0, PARAMDOC_IDUM);
 
 	CHECK_PARSED(SEARCH_GRID, 0, PARAMDOC_SEARCH_GRID);
+	CHECK_PARSED(PATH_TO_TRACKS, NULL, PARAMDOC_PATH_TO_TRACKS);
+	CHECK_PARSED(PATH_TO_HE_TRACKS, NULL, PARAMDOC_PATH_TO_HE_TRACKS);
 	CHECK_PARSED(SG_STARSPERBIN, 100, PARAMDOC_SG_STARSPERBIN);
 	CHECK_PARSED(SG_MAXLENGTH, 1000000, PARAMDOC_SG_MAXLENGTH);
 	CHECK_PARSED(SG_MINLENGTH, 1000, PARAMDOC_SG_MINLENGTH);

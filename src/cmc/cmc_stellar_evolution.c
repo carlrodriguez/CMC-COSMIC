@@ -79,10 +79,16 @@ void restart_stellar_evolution(void){
   bse_set_eddfac(BSE_EDDFAC); /* (normally 1.0) */
   bse_set_gamma(BSE_GAMMA);
   bse_set_merger(-1.0);
+  bse_set_stellar_engine(STELLAR_ENGINE);
+
+  if((PATH_TO_TRACKS == NULL || PATH_TO_HE_TRACKS == NULL) && STELLAR_ENGINE == 1){
+    eprintf("ERROR: you must specify both PATH_TO_TRACKS and PATH_TO_HE_TRACKS if using METISSE\n"); 
+    exit_cleanly(-1,__FUNCTION__);
+  }
   
   /* set parameters relating to metallicity */
   zpars = (double *) malloc(20 * sizeof(double));
-  bse_zcnsts(&METALLICITY, zpars);
+  bse_zcnsts(&METALLICITY, zpars, PATH_TO_TRACKS, PATH_TO_HE_TRACKS);
 
   /* set collisions matrix */
   bse_instar();
@@ -106,6 +112,10 @@ void stellar_evolution_init(void){
 
   /* SSE */
   /* bse_set_hewind(0.5); */
+  if((PATH_TO_TRACKS == NULL || PATH_TO_HE_TRACKS == NULL) && STELLAR_ENGINE == 1){
+    eprintf("ERROR: you must specify both PATH_TO_TRACKS and PATH_TO_HE_TRACKS if using METISSE\n"); 
+    exit_cleanly(-1,__FUNCTION__);
+  }
 
   /* BSE */
   bse_set_using_cmc();
@@ -173,10 +183,11 @@ void stellar_evolution_init(void){
   bse_set_eddfac(BSE_EDDFAC); /* (normally 1.0) */
   bse_set_gamma(BSE_GAMMA);
   bse_set_merger(-1.0);
+  bse_set_stellar_engine(STELLAR_ENGINE);
   
   /* set parameters relating to metallicity */
   zpars = (double *) malloc(20 * sizeof(double));
-  bse_zcnsts(&METALLICITY, zpars);
+  bse_zcnsts(&METALLICITY, zpars, PATH_TO_TRACKS, PATH_TO_HE_TRACKS);
 
   /* set collisions matrix */
   bse_instar();

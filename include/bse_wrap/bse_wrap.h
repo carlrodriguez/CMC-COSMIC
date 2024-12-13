@@ -126,7 +126,7 @@ typedef struct{
 } bse_binary;
 
 /* prototypes for fortran BSE functions */
-void zcnsts_(double *z, double *zpars);
+void zcnsts_(double *z, double *zpars, char *PATH_TO_TRACKS, char *PATH_TO_HE_TRACKS);
 void evolv2_(int *kstar, double *mass, double *tb, double *ecc, double *z, 
 	     double *tphysf, double *dtp, double *mass0, double *rad, double *lum,
              double *massc, double *radc, double *menv, double *renv,
@@ -147,7 +147,7 @@ void comenv_(double *M01, double *M1, double *MC1, double *AJ1, double *JSPIN1, 
 
 
 /* wrapped BSE functions */
-void bse_zcnsts(double *z, double *zpars);
+void bse_zcnsts(double *z, double *zpars, char *PATH_TO_TRACKS, char *PATH_TO_HE_TRACKS);
 void bse_evolv2(int *kstar, double *mass0, double *mass, double *rad, double *lum, 
 		double *massc, double *radc, double *menv, double *renv, double *ospin,
                 double *B_0, double *bacc, double *tacc,
@@ -197,6 +197,7 @@ extern struct { double dmmax, drmax; } tstepc_;
 extern struct { double scm[14][50000], spp[3][20]; } single_;
 extern struct { double bcm[38][50000], bpp[43][1000]; } binary_;
 extern struct { double merger; long int id1_pass, id2_pass; long int using_cmc; } cmcpass_;
+extern struct { int using_sse; int using_metisse; } se_flags_;
 
 /* setters */
 void bse_set_idum(int idum); /* RNG seed (for NS birth kicks) */
@@ -289,6 +290,7 @@ int icase_get(int i, int j); /* use to get mixed type from ktype table */
 /* copied functions */
 double bse_kick_speed(int *startype); /* routine for generating birth kick speed from distribution */
 double bse_rl(double q); /* Roche lobe formula */
+void bse_set_stellar_engine(int stellar_engine); /*Switch between SSE and METISSE*/
 
 /* useful macros */
 #define BSE_WRAP_MAX(a, b) ((a)>=(b)?(a):(b))

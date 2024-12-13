@@ -29,9 +29,9 @@
 * @param z ?
 * @param zpars ?
 */
-void bse_zcnsts(double *z, double *zpars)
+void bse_zcnsts(double *z, double *zpars, char *PATH_TO_TRACKS, char *PATH_TO_HE_TRACKS)
 {
-  zcnsts_(z, zpars);
+  zcnsts_(z, zpars, PATH_TO_TRACKS, PATH_TO_HE_TRACKS);
 }
 
 void bse_evolve_single(int *kw, double *mass, double *mt, double *r, double *lum,
@@ -705,7 +705,15 @@ void bse_set_gamma(double gamma) { windvars_.gamma = gamma; }
 void bse_set_merger(double merger) {cmcpass_.merger = merger; }
 void bse_set_id1_pass(long int id1_pass) { cmcpass_.id1_pass = id1_pass; }
 void bse_set_id2_pass(long int id2_pass) { cmcpass_.id2_pass = id2_pass; }
-
+void bse_set_stellar_engine(int stellar_engine) {
+    if (stellar_engine == 0){
+        se_flags_.using_sse = 1;
+        se_flags_.using_metisse = 0;
+    } else {
+        se_flags_.using_sse = 0;
+        se_flags_.using_metisse = 1;
+    }
+}
 /**
 * @brief copies the C tausworthe rng state variables to the Fortran states
 *

@@ -780,15 +780,15 @@ typedef struct{
 	int DF_FILE;
 #define PARAMDOC_STELLAR_ENGINE "Stellar Engine for Stellar Evolution"
 /**
-* @brief Which single-star evolution to use in BSE 
-* 0 = SSE
-* 1 = METISSE
+* @brief Which single-star evolution to use in BSE (you don't need the quotes) 
+* "sse" -- uses the original Hurley SSE interpolation
+* "metisse" -- uses METISSE from Agrawal et al., 2020,2023
 */
 	int STELLAR_ENGINE;
 #define PARAMDOC_PATH_TO_TRACKS "Absolute path to the main sequence tracks"
 /**
 * @brief The absolute path to the main sequence stellar evolution tracks used for METISSE 
-* Only used if STELLAR_ENGINE=1 
+* Only used if STELLAR_ENGINE=metisse 
 */
 	int PATH_TO_TRACKS;
 #define PARAMDOC_PATH_TO_HE_TRACKS "Absolute path to the helium tracks"

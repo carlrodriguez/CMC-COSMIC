@@ -1027,7 +1027,7 @@ if(myid==0) {
 				parsed.SNAPSHOT_CORE_COLLAPSE = 1;
 			} else if (strcmp(parameter_name, "SNAPSHOT_WINDOWS") == 0) {
 				PRINT_PARSED(PARAMDOC_SNAPSHOT_WINDOWS);
-				if (strncmp(values, "NULL", 4) == 0) {
+				if (strcmp(values, "None") == 0) {
 				    SNAPSHOT_WINDOWS=NULL;
 				} else {
 				    SNAPSHOT_WINDOWS= (char *) malloc(sizeof(char)*300);
@@ -1054,7 +1054,7 @@ if(myid==0) {
 				parsed.USE_DF_CUTOFF = 1;
 			} else if (strcmp(parameter_name, "DF_FILE") == 0) {
 				PRINT_PARSED(PARAMDOC_DF_FILE);
-				if (strncmp(values, "NULL", 4) == 0) {
+				if (strcmp(values, "None") == 0) {
 					DF_FILE = NULL;
 				} else{
 					DF_FILE = (char *) malloc(sizeof(char)*500);
@@ -1075,7 +1075,7 @@ if(myid==0) {
 				parsed.USE_TT_FILE = 1;
 			} else if (strcmp(parameter_name, "TT_FILE") == 0) {
 				PRINT_PARSED(PARAMDOC_TT_FILE);
-				if (strncmp(values, "NULL", 4) == 0) {
+				if (strcmp(values, "None") == 0) {
 					TT_FILE = NULL;
 				} else{
 					TT_FILE = (char *) malloc(sizeof(char)*500);
@@ -1223,11 +1223,18 @@ if(myid==0) {
 				parsed.TERMINAL_ENERGY_DISPLACEMENT = 1;
 			} else if  (strcmp(parameter_name, "STELLAR_ENGINE") == 0) {
 			 	PRINT_PARSED(PARAMDOC_STELLAR_ENGINE);
-				sscanf(values, "%ld", &STELLAR_ENGINE);
+				if (strcmp(values, "sse") == 0) {
+                    STELLAR_ENGINE = 0;
+                } else if (strcmp(values, "metisse") == 0) {
+                    STELLAR_ENGINE = 1;
+                } else {
+					eprintf("Unrecognized option for stellar engine %s.", values);
+                    exit_cleanly(-1, __FUNCTION__);
+                }
 				parsed.STELLAR_ENGINE = 1;
 			} else if (strcmp(parameter_name, "PATH_TO_TRACKS") == 0) {
 				PRINT_PARSED(PARAMDOC_PATH_TO_TRACKS);
-				if (strncmp(values, "NULL", 4) == 0) {
+				if (strcmp(values, "None") == 0) {
 					PATH_TO_TRACKS = NULL;
 				} else{
 					PATH_TO_TRACKS = (char *) malloc(sizeof(char)*256);
@@ -1236,7 +1243,7 @@ if(myid==0) {
 				parsed.PATH_TO_TRACKS= 1;
 			} else if (strcmp(parameter_name, "PATH_TO_HE_TRACKS") == 0) {
 				PRINT_PARSED(PARAMDOC_PATH_TO_HE_TRACKS);
-				if (strncmp(values, "NULL", 4) == 0) {
+				if (strcmp(values, "None") == 0) {
 					PATH_TO_HE_TRACKS = NULL;
 				} else{
 					PATH_TO_HE_TRACKS = (char *) malloc(sizeof(char)*256);

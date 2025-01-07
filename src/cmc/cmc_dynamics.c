@@ -495,9 +495,23 @@ are skipped if they already interacted in 3bb loop!  */
 			set_star_EJ(k);
 			set_star_EJ(kp);	
 
+			/* Adjust energy and angular momentum based on GW Emission*/
+			if (cenma.m > 0.0 && BH_LOSS_CONE) {
+				double clight = 2.9979e10 / (units.l/units.t);  /*speed of light in code units*/
+
+				/* remember that Dt is in relaxation times, NOT N-body times.  Convert it here*/
+   				double dt_nb = dt * ((double) clus.N_STAR)/ log(GAMMA * ((double) clus.N_STAR));
+				
+				if (star[k].E < 0.0) {
+					peters_E_J(k, dt_nb);
+
+				} if (star[kp].E < 0.0) {
+					peters_E_J(kp, dt_nb);
+				}
+			}
+
 			/* check to see whether stars should be eaten by central BH */
             //MPI: This function has been parallelized, but may contain bugs. I was not clear as to what some functions were doing, so wasn't sure if index transformation was reqd or not. Might need some checking by the author.
-
 			if (cenma.m > 0.0 && BH_LOSS_CONE) {
 				if (star[k].E < 0.0) {
 					bh_rand_walk(k, v_new, vcm, beta, dt, rng);

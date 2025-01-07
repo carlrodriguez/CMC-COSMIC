@@ -2432,3 +2432,73 @@ int get_local_idx(int i)
 
 	return ( i - End[myid-1] );
 }
+
+/**
+* @brief Function that calculates the semi-major axis (a) and eccentricity (e) of a Keplerian orbit.
+* @param index Star's index
+* @param a_kep Pointer to the variable to store the semimajor axis 
+* @param e_kep Pointer to the variable to store the eccentricity
+* @param E_kep Pointer to the Star's Keplerian Energy
+* @param J_kep Pointer to the Star's Keplerian Angular Momentum 
+* @param vr Star's radial speed
+* @param vt Star's tangential speed
+*/
+void get_Keplerian_a_e(int index, double *a_kep, double *e_kep, double *E_kep, double *J_kep, double vr, double vt){
+
+	int g_index = get_global_idx(index);
+	double tolerance = 1e-5;  // Small tolerance value
+
+    *E_kep = -(cenma.m * madhoc)/star_r[g_index] + 0.5 * (sqr(vr) + sqr(vt)); /* in code units */    
+    *J_kep = star_r[g_index] * vt; /* in code units */
+
+    *a_kep = -(cenma.m * madhoc) / (2. * (*E_kep)); /* in code units */
+	*e_kep = sqrt(1. - (sqr(*J_kep)/(*a_kep * cenma.m * madhoc)));
+
+	if  (fabs(*e_kep - 1.0) < tolerance){
+		*e_kep -= tolerance;
+	}
+}
+
+/**
+* @brief Function that calculates the energy and angular momentum loss due to gravitational wave emission and updates the star's E and J. 
+* @param index Star's index
+* @param dt_nb Timestep in Nbody units
+*/
+void peters_E_J(int index, double dt_nb){
+
+	double a_kep = 0.0, e_kep = 0.0, E_kep = 0.0, J_kep = 0.0; /*Variables to store Keplerian semimajor axis and eccentricity*/
+	double clight = 2.9979e10 / (units.l/units.t);  /*speed of light in code units*/
+	int g_index = get_global_idx(index);
+
+	/*Get the Keplerian semi-major axis (a) and eccentricity (e).*/
+	/*Note: This approximation is only valid for objects inside the MBH's dynamical radius. Most TDEs satisfy this condition, but not all. This is the best we can do for now */
+	get_Keplerian_a_e(index, &a_kep, &e_kep, &E_kep, &J_kep, star[index].vr, star[index].vt);
+
+	if(a_kep > 0.0 && e_kep < 1.){ //Only if the star is bound to the MBH 
+	
+		/*Equations 5.4 and 5.5 from Peters 1964, but per unit mass (divided by m2)*/
+		//TODO: some stars are not bound to the SMBH, so a is going to come out negative... how do we address this? For now, if that's teh case the E_gw = 0. 
+		// dprintf("Cenma[MSUN] =%g, star_m[MSUN] =%g, madhoc=%g,a_kep[RSUN]=%g, e_kep=%g \n", cenma.m * units.mstar / MSUN, star_m[g_index]* units.mstar / MSUN, madhoc, a_kep * units.l / RSUN, e_kep);
+
+		// Variables for calculation of dE/dT						
+		double m1 = cenma.m * madhoc;
+		double m2 = star_m[g_index] * madhoc;
+		double clight5 = pow(clight, 5);
+		double a5 = pow(a_kep, 5); 
+		double ecc_factor = (1 + (73.0 / 24.0) * sqr(e_kep) + (37.0 / 96.0) * pow(e_kep, 4)) / pow((1 - sqr(e_kep)),(7.0 / 2.0)); 
+
+		// Variables for calculation of dJ/dT	
+		double a7_2 = pow(a_kep, 7.0 / 2.0); 
+		double ecc_factor_J = (1 + (7.0 / 8.0) * sqr(e_kep)) / (sqr(1 - sqr(e_kep)));
+
+		double dE_Dt = -(32.0 / 5.0) * (sqr(m1) * m2 * (m1 + m2) / (clight5 * a5 )) * ecc_factor;
+		double dJ_Dt = -(32.0 / 5.0) * (sqr(m1) * m2 * sqrt(m1 + m2) / (clight5 * a7_2 )) * ecc_factor_J;
+
+		// dprintf("BEFORE The Energy of star index = %ld at r = %g, E =%g, J=%g \n", index, star_r[g_index], star[index].E, star[index].J);
+		star[index].E += dE_Dt * dt_nb;
+		star[index].J += dJ_Dt * dt_nb;
+		// dprintf("Adding energy dE/dt = %g  for a period dt = %g \n ", dE_Dt, dt_nb);
+
+		// dprintf("AFTER The Energy of star index = %ld at r = %g, Energy =%g,  J=%g E[cgs]=%g\n", index, star_r[g_index],  star[index].E, star[index].J, star[index].E * sqr(units.l/units.t));
+		} 
+}					

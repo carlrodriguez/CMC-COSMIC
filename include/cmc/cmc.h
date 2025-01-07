@@ -1784,8 +1784,6 @@ void calc_timestep(gsl_rng *rng);
 void energy_conservation1();
 void energy_conservation2();
 void new_orbits_calculate();
-void write_morecoll(long i);
-void write_bhlosscone(long i);
 void toy_rejuvenation();
 void pre_sort_comm();
 void post_sort_comm();
@@ -1965,7 +1963,7 @@ fb_ret_t binbin(double *t, long k, long kp, double W, double bmax, fb_hier_t *hi
 
 void bmbh_calcunits(fb_obj_t *obj[2], fb_units_t *bs_units);
 fb_ret_t binmbh(double *t, long kbin, double v[3], double dist, fb_hier_t *hier, gsl_rng *rng, double time);
-int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3], double full_disruption_flag, double Rdisr);
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3], double local_MBH_TDE_ACCRETION, double Rdisr, double rperi_kep, double E_kep, double J_kep, int r_disr_flag);
 
 double binint_get_mass(long k, long kp, long id);
 long binint_get_startype(long k, long kp, long id);
@@ -2029,8 +2027,11 @@ double calc_P_orb(long index);
 double calc_p_orb_f(double x, void *params);
 double calc_p_orb_f2(double x, void *params);
 double calc_p_orb_gc(double x, void *params);
+double calc_t_to_rp(long index, double E_kep, double J_kep, double a_kep, double e_kep, double Porb);
 void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng);
-double get_Keplerian(double w_cl[3], int g_index, double *E_temp, double *J_temp);
+void get_Keplerian_a_e(int index, double *a_kep, double *e_kep, double *E_kep, double *J_kep, double vr, double vt);
+void peters_E_J(int index, double dt_nb );
+double peters_t_insp(double mG3c5, double a, double e);
 
 /* potential calculation speed-up*/
 long check_if_r_around_last_index(long last_index, double r);

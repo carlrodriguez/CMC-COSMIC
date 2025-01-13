@@ -78,15 +78,16 @@ void write_rwalk_data(char *fname, long index, double Trel, double dt,
 * @param dt MC timestep
 */
 void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt, gsl_rng *rng){ 
+    /*TODO: Organize these better */
 	double w[3], w_cl[3], n_orb, P_orb, deltabeta_orb, L2, Rdisr, Jlc, vlc;
 	double deltamax, deltasafe, delta, dbeta;
 	double w_mag, l2_scale;
-    double E_kep=0., J_kep=0., a_kep=0., e_kep=0., rperi_kep;
-    double t_to_rp;
+    double E_step=0., J_step=0., a_step=0., e_step=0.;
+    double rperi, t_to_rp;
 	int i;
     int g_index;
 	g_index = get_global_idx(index);
-
+    orbit_rs_t orbit_rs_step;
 	char fname[80];
 	long is_in_ids;
 	double Trel, n_local, M2ave; 
@@ -96,19 +97,29 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
     double local_MBH_TDE_ACCRETION; /*Local variable used to change the fraction of mass accreted in cases where the tidal disruption radius (Rtidal) is less than the Schwarzschild radius (Rss). In these cases, the star will be fully disrupted and all of its mass will be added to the central MBH. By default, this variable is equal to MBH_TDE_ACCRETION prefactor.   */
     double dt_nb = dt*((double) clus.N_STAR)/log(GAMMA * ((double) clus.N_STAR)); /*Timestep in N-body units*/
     int r_disr_flag; /*Flag to indicate if the disruption radius (0) is the tidal radius or the Schwarzschild (1)*/
+    int in_loss_cone=0;
+    double time_for_binary = 0.;
+
+    /* Fewbody part (only alloc if binary) */
+    fb_ret_t retval;
+    double t=0;
+    double a_old,e_old;
+    int binary_gone=0, was_binary=0; 
+    fb_hier_t hier;
+    hier.nstarinit = 3;
 
 	is_in_ids= 0;
-	sprintf(fname, "%s.rwalk_steps.dat", outprefix);
+	// sprintf(fname, "%s.rwalk_steps.dat", outprefix);
 	n_local= calc_n_local(g_index, AVEKERNEL, clus.N_MAX);
 	W = 4.0 * sigma_array.sigma[index] / sqrt(3.0*PI);
     M2ave= calc_average_mass_sqr(index, clus.N_MAX);
 
 	Trel= (PI/32.)*cub(W)/ ( ((double) clus.N_STAR) * n_local * (4.0* M2ave) );
 
-	if (index==1 && tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
-		is_in_ids=1;
-		create_rwalk_file(fname);
-	};
+	// if (index==1 && tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
+	// 	is_in_ids=1;
+	// 	create_rwalk_file(fname);
+	// };
 	/* simulate loss cone physics for central mass */
 	//MPI: Parallelized, but might have mistakes since I am not clear as to what some functions are doing.
 	
@@ -174,18 +185,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 	for (i=0; i<3; i++) {
 		w[i]= v[i+1]- vcm[i+1];
 	}
+
 	w_mag= sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]);
 	delta= 0.0;
-    int in_loss_cone=0;
-    double time_for_binary = 0.;
-
-    /* Fewbody part (only alloc if binary) */
-    fb_ret_t retval;
-    double t=0;
-    double a_old,e_old;
-    int binary_gone=0, was_binary=0; 
-    fb_hier_t hier;
-    hier.nstarinit = 3;
 
     if(star[index].binind > 0){
         fb_malloc_hier(&hier);
@@ -196,9 +198,18 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 
     /* Calculate the time left in the random walk step in N-body units */
     double time_left = (dt*((double) clus.N_STAR)/log(GAMMA * ((double) clus.N_STAR))) - time_for_binary ;
-    int step = 0;
-	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/  
-        step += 1;
+    int step = 0; 
+	while (L2 > 0.0) { /* If L2 <= 0, the random walk is over*/ 
+        step += 1; 
+        /*Moved this here for testing purposes to get information about each step in the random walk */
+        /*TODO: Consider leaving this as is or leaving it where it was */
+        if (step >= 2){
+            // eprintf("Should be writing to the random walk file ... \n ");
+            // write_rwalk_data(fname, g_index, step, E_step, J_step, star_r[g_index], n_orb);
+            eprintf( " Step information : g_index = %ld id = %ld step = %d E_step = %g J_step = %g r = %g n_orb = %g \n",  g_index, star[index].id, step, E_step, J_step, star_r[g_index], n_orb) ;
+            // parafprintf(rwalkfile, "%ld %d %g %g %g %g \n",  g_index, step, E_step, J_step, star_r[g_index], n_orb) ;
+        }
+
         /* Calculate the particle's velocity in the cluster center reference frame */
         for (i=0; i<3; i++) {
             w_cl[i]= w[i]+ vcm[i+1];
@@ -212,29 +223,18 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
         deltasafe= CSAFE*(sqrt(fb_sqr(w[0]+vcm[1])+fb_sqr(vcm[2]+w[1]))-vlc)/w_mag;
         delta = MAX(deltabeta_orb, MIN(deltamax, MIN(deltasafe, sqrt(L2)))); 
         
-        //MIGHT DELETE KEPLERIAN APPROXIMATIONS 
-        // /* Get the keplerian orbit parameters*/
-        // /*TODO UNDO, THIS IS PART OF  TESTING*/
-        // get_Keplerian_a_e(index, &a_kep, &e_kep, &E_kep, &J_kep, w_cl[2], sqrt(sqr(w_cl[0]) + sqr(w_cl[1]))); 
-        // rperi_kep = a_kep * (1. - e_kep); /* in code units */
-
-        // // get_Keplerian_a_e(index, &a_kep, &e_kep, &E_kep, &J_kep, w[2], sqrt(sqr(w[0]) + sqr(w[1]))); 
-        // // eprintf("Index = %ld, step = %d, E_kep = %g, w[0] = %g, w[1] = %g, w[2] = %g, wmag =%g \n", g_index, step, E_kep, w[0], w[1], w[2], sqrt(sqr(w[0]) + sqr(w[1]) +sqr(w[2])));
-
-
         /* Calculate the time left in the random walk step in N-body units */
         double time_left = (dt*((double) clus.N_STAR)/log(GAMMA * ((double) clus.N_STAR))) - time_for_binary ;
         
-       if (in_loss_cone && step == 1){
+	    /* Compute new orbital parameters */
+        E_step = star_phi[g_index] + 0.5 * (sqr(w_cl[2]) + sqr(sqrt(sqr(w_cl[0]) + sqr(w_cl[1]))));  
+        J_step = star_r[g_index] * sqrt(sqr(w_cl[0]) + sqr(w_cl[1])); 
+	    orbit_rs_step = calc_orbit_new(index, E_step, J_step);
 
-          /* Calculate the time to reach pericenter */
-            E_temp = star_phi[g_index] + 0.5 * (sqr(w_cl[2]) + sqr(sqrt(sqr(w_cl[0]) + sqr(w_cl[1]))))); /* in code units */  
-            t_to_rp = calc_t_to_rp(index, E_temp, J_temp, P_orb);
+        if (in_loss_cone){
 
-            /* If the radial component of the velocity is < 0,  the object is moving towards its pericenter, if vr >0, it is moving towards the apocenter and we need to correct t_to_rp.*/
-            if (w_cl[2] > 0.){
-                t_to_rp = P_orb - t_to_rp; /* The object is moving away from  */
-            }
+            /* Calculate the time to reach pericenter */
+            t_to_rp = calc_t_to_rp(index, E_step, J_step, &rperi, orbit_rs_step, w_cl[2]);
 
             if (t_to_rp <= time_left){ /*If the time to reach the pericenter is less than the timestep*/
 
@@ -250,7 +250,9 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                     retval = binmbh(&t, index, w_cl, star_r[g_index], &hier, rng, time_for_binary);
 
                     /* And analyze the output */
-                    binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w_cl, local_MBH_TDE_ACCRETION, Rdisr, rperi_kep, E_kep, J_kep, r_disr_flag);
+                    /*TODO: DO I PASS WCL OR W???*/
+                    /*TODO: Now I need a way to get the rp back from t_to_tp???*/
+                    binary_gone = analyze_fewbody_output(&hier, &retval, index, t, w_cl, local_MBH_TDE_ACCRETION, Rdisr, rperi, E_step, J_step, r_disr_flag);
 
                     /* Binary is gone, end the random walk */ 
                     if(binary_gone){
@@ -271,7 +273,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                     
                     /* Write to file */
                     if (WRITE_BH_LOSSCONE_INFO){
-                        parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi_kep * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                        parafprintf(bhlossconefile, "%g 0 Disrupted %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g %g %d %d\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag, step);
                     }
                     /* Destroy the star and complete the random walk */
                     destroy_obj(index);
@@ -282,13 +284,17 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 		    }
        }
         /*TODO: ARE THE BREAKS OK?*/
-
-        if (a_kep > 0. && e_kep < 1. && !in_loss_cone){ /* Check if object will inspiral in during the remaining time of the timestep */
+        /*TODO: CHANGE TO PETERS EQUATIONS, maybe we can simply check if */
+        /*TODO: Before we were checking that a_kep > 0 tomake sure it was bound, now it qill probably always be > 0 so what do we do?*/
+        if (!in_loss_cone){ /* Check if object will inspiral in during the remaining time of the timestep */
         /*TODO: Does it make sense to do this here or after the random walk is complete? Wierd cause the eccentricty eould be affected .... */
         
             /*Get the inspiral time in N-body Units*/
             double mG3c5 = cenma.m * star[index].m * (cenma.m + star[index].m) * pow(madhoc,3) / pow(clight,5);
-            double t_to_merger = peters_t_insp(mG3c5, a_kep, e_kep);
+            a_step = (orbit_rs_step.rp + orbit_rs_step.ra) / 2.0 ; 
+            e_step = (orbit_rs_step.ra - orbit_rs_step.rp )/(orbit_rs_step.ra + orbit_rs_step.rp); 
+
+            double t_to_merger = peters_t_insp(mG3c5, a_step, e_step);
 
             if (t_to_merger < time_left){ //The object will inspiral 
                 /*TODO: DO THINGS DIFFERENTLY IS A STAR VS COMPACT OBJECT */
@@ -307,13 +313,13 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
                     }if( binary[star[index].binind].bse_kw[1] < 10){ cenma.m_new += MBH_TDE_ACCRETION*( binary[star[index].binind].m2); 
                     }else{cenma.m_new += ( binary[star[index].binind].m2); }
                     
-                    parafprintf(bhlossconefile, "%g 1 Inspiral %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g %g %d\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_radc[1], binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                    parafprintf(bhlossconefile, "%g 1 Inspiral %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g %g %d 0 \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_radc[1], binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
 
                 }else{ 
                     /* Add mass and energy to central MBH */
                     cenma.m_new += local_MBH_TDE_ACCRETION*(star_m[g_index]); 
                     cenma.E_new += local_MBH_TDE_ACCRETION*((2.0*star_phi[g_index] + star[index].vr * star[index].vr + star[index].vt * star[index].vt) /  2.0 * star_m[g_index] * madhoc + star[index].Eint);
-                    parafprintf(bhlossconefile, "%g 0 Inspiral %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g %g %d\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi_kep * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                    parafprintf(bhlossconefile, "%g 0 Inspiral %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 -100 -100 %g %g %g %g %g %g %g %d 0 \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, star[index].id, star[index].m * units.mstar / MSUN, star[index].rad  * units.l / RSUN, star[index].se_rc * units.l / RSUN, star[index].se_k, rperi * units.l / RSUN, w_cl[0], w_cl[1], w_cl[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
                 }
 
                 // eprintf("GW inpiral happened index = %ld, mass1 = %g, cenma.m %g, tins = %g, time_left = %g, a = %g, e = %g single \n", index, star[index].m * units.mstar / MSUN, cenma.m * units.mstar / MSUN,t_to_merger, time_left, a_kep, e_kep );
@@ -335,9 +341,7 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
 
         time_left -= time_for_binary; /* Update the time left */
 
-        // if ((in_loss_cone) && (t_to_rp > dt_nb)){
-        //     // eprintf("This object will not be considered: gindex = %ld r = %g, rp = %g, ra = %g, Porb = %g, t_to_rp = %g dt = %g L2 = %g \n ", g_index, star_r[g_index],star[index].r_peri, star[index].r_apo, P_orb, t_to_rp, dt_nb, L2);
-        // }
+
 	} 
 
     if(was_binary){ /* Only malloc if alloc above */
@@ -349,10 +353,10 @@ void bh_rand_walk(long index, double v[4], double vcm[4], double beta, double dt
         }
     }
 
-    if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
-            write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
-                    n_local, W, P_orb, n_orb);
-        }
+    // if (tcount%SNAPSHOT_DELTACOUNT==0 && SNAPSHOTTING && WRITE_RWALK_INFO) {
+    //         write_rwalk_data(fname, g_index, Trel, dt, l2_scale, n_steps, beta,
+    //                 n_local, W, P_orb, n_orb);
+    //     }
 
 	/*Free up the star structure since we have already r_peri and r_apo in the bhlosscone file */
 	star[index].r_peri = 0.0;
@@ -391,82 +395,95 @@ void do_random_step(double *w, double beta, double delta) {
 /**
 * @brief calculate star's time until the next pericenter passage 
 * @param index star index
-* @param E_temp star's energy in the RW step [code units]
-* @param J_temp star's angular momentum in the RW step [code units]
-* @param Porb star;'s orbital period  [code units]
+* @param E_step star's energy in the RW step [code units]
+* @param J_step star's angular momentum in the RW step [code units]
+* @param orbit_rs star's orbit 
+* @param vr radial component of the velocity [code units]
 * @return star's time until the next pericenter passage 
 */
-double calc_t_to_rp(long index, double E_temp, double J_temp, double Porb){
-	orbit_rs_t orbit_rs;
+double calc_t_to_rp(long index, double E_step, double J_step, double *rperi, orbit_rs_t orbit_rs, double vr){
 	calc_p_orb_params_t params;
-    gsl_function F;
-    double error, t_to_rp, a_approx;
-    struct Interval star_interval;
-    int status = 0;
-    int g_index;
-	g_index = get_global_idx(index);
+    gsl_function F, F_porb;
+    double error, t_to_rp, a_approx, e_approx, Porb;
+    int status = 0, status_porb = 0;
+	int g_index = get_global_idx(index);
 
-    /* default values for star_interval */
-    star_interval.min= 1;
-    star_interval.max= clus.N_MAX+1;
-
-    /*TODO: we're doing this twice?!  Put in a flag to only compute
-	 * new orbital parameters here if we're using the loss cone*/
-	/*Find out new orbit of star, primarily peri and apo- center distances*/
-	orbit_rs = calc_orbit_new(index, E_temp, J_temp);
-
-    params.E = E_temp;
-    params.J = J_temp;
+    params.E = E_step;
+    params.J = J_step;
     params.index = g_index;
     params.kmax= orbit_rs.kmax+1; 
     params.kmin= orbit_rs.kmin;
     params.rp = orbit_rs.rp;
     params.ra = orbit_rs.ra;
     F.params = &params;
+    F_porb.params = &params;
+    *rperi = orbit_rs.rp; 
 
-    // Cabrera 230731: Added error handling to default to Porbapprox
-    gsl_error_handler_t *old_handler;
-    old_handler = gsl_set_error_handler_off();
-
-    /*TODO
-        Do we need this in the case trhat r ~ rp anymore?
-        Is the approx physical?
-        Is it bad that orbit  rs is calculated here again?
-        Make sure error handler works good*/
-        
-    /* Integral to get the time until the next pericenter passage */
-            // if ((fabs(orbit_rs.rp - star_r[g_index]) / orbit_rs.rp)  < 0.01) { /* If at the pericenter, return 0*/
-            //     *t_to_rp = 0.;
-            // }else{
-
-    F.function = &calc_p_orb_gc;
-    status = gsl_integration_qaws(&F, orbit_rs.rp, star_r[g_index], table_lc_porb_integral,
-                1.0e-3, 1.0e-3, 1000, workspace_lc_porb_integral, &t_to_rp, &error);
-    
-    // Print error if there's a problem with the integration, and return Porb and assume it is most likely at ra
-    // if (status) {
-        // eprintf("gsl_integration_qa[g,w]s failed for rp (gsl_errno=%d, index=%d, g_index=%d, orbit_rs.rp=%e, orbit_rs.r=%e); check cmc_bhlosscone.c for [g,w] routine; returning t_to_rpapprox=%e\n", status, index, g_index, orbit_rs.rp,star_r[g_index], Porb / 2.);
-
-    /* If integration fails, we approximate with the two-body problem */
     /* Aproximate semimajor axis and eccentricity */
     a_approx = (orbit_rs.rp + orbit_rs.ra) / 2.0 ; 
     e_approx = (orbit_rs.ra - orbit_rs.rp )/(orbit_rs.ra + orbit_rs.rp); 
 
-    /* Mean motion in radians / Nbody time, equation 2.25 in Murray and Dermott */
-    double n = (2.0 * PI) / Porb ;
+    // Cabrera 230731: Added error handling
+    gsl_error_handler_t *old_handler;
+    old_handler = gsl_set_error_handler_off();
 
-    /* Eccentric anomaly in dimensionless units, equation 2.42 in Murray and Dermott */
-    double  E =  acos((1.0 / e_approx) * (1.0 - (star_r[g_index] / a_approx)));
+    /*Get the orbital period for the RW step*/
+    F_porb.function = &calc_p_orb_gc;
+    status_porb = gsl_integration_qaws(&F_porb, orbit_rs.rp, orbit_rs.ra, table_lc_porb_integral, 1.0e-3, 1.0e-3, 1000, workspace_lc_porb_integral, &Porb, &error);
+    if (!status_porb) {
+        Porb *= 2;
+    }else if (status_porb) {
+        /* If integration fails, return Keplerian period */
+		Porb = pow((pow(a_approx,3.0) * 4.0 * pow(PI,2.0)) / (cenma.m * madhoc), 1./2.);
+	}
 
-    /* Using Kepler's quation (equation 2.52 in Murray and Dermott), we can solve for (t - tau) in Nbody units */
-    double t_minus_tau = (E - e_approx * sin(E)) / n ;
+    F.function = &calc_p_orb_gc;
+    status = gsl_integration_qaws(&F, orbit_rs.rp, star_r[g_index], table_lc_porb_integral,
+                1.0e-3, 1.0e-3, 1000, workspace_lc_porb_integral, &t_to_rp, &error);
+
+     /* If the radial component of the velocity is < 0,  the object is moving towards its pericenter, if vr >0, it is moving towards the apocenter and we need to correct t_to_rp.*/
+    if (vr > 0.){
+        t_to_rp = Porb - t_to_rp; /* The object is moving away from  */
+    }
+
+    // Print error if there's a problem with the integration, and return the approximation from equation 2.52 in Murray and Dermott
+    if (status) {
+        /* If integration fails, we approximate with the two-body problem */
+
+        /* Mean motion in radians / Nbody time, equation 2.25 in Murray and Dermott */
+        double n = (2.0 * PI) / Porb ;
+
+        /* Eccentric anomaly in dimensionless units, equation 2.42 in Murray and Dermott */
+        double  E =  acos((1.0 / e_approx) * (1.0 - (star_r[g_index] / a_approx)));
+        if (vr > 0.){ /* Adjust eccentric anomaly if the object is moving away from pericenter */
+                E = 2 * PI - E;
+        }
+            
+        if (isnan(E)){ /* Check if E is nan, occurs if object is near apocenter or for a highly eccentric orbit */
+            eprintf("E is nan, approxmation being used  e = %g, a = %g, r = %g ra = %g, rp = %g \n ", e_approx, a_approx, star_r[g_index], orbit_rs.ra, orbit_rs.rp);
+            if (fabs(star_r[g_index] - orbit_rs.rp)/orbit_rs.rp < 1e-3){
+                E = 0; /* Object is at pericenter */
+            }else if (fabs(star_r[g_index] - orbit_rs.ra)/orbit_rs.ra < 1e-3){
+                E = PI; /* Object is at apocenter */
+            }else if (0.99<=e_approx && e_approx<=1.0) { /* Use taylor expansion of equation 2.42 */
+                E = acos((1.0 - (star_r[g_index] / a_approx))*((2 - e_approx)));
+            }else{ 
+                eprintf("E is STILL nan e = %g, a = %g, r = %g \n ", e_approx, a_approx, star_r[g_index]);
+                /* TODO: DECIDE WHAT TO DO HERE*/
+            }
+        }
+
+        /* Using Kepler's quation (equation 2.52 in Murray and Dermott), we can solve for (t - tau) in Nbody units */
+        double t_minus_tau = (E - e_approx * sin(E)) / n ;
     
-    // t_to_rp = t_minus_tau;
-    eprintf("index = %ld, E = %g, E_temp = %g, r = %g \n", g_index, star[index].E, E_temp, star_r[g_index]);
-    eprintf("index = %ld, t_to_rp = %g, t_minus_tau = %g\n", g_index, t_to_rp, t_minus_tau);
-    // eprintf("Testing, index = %ld  Ekep = %g E = %g J_kep = %g a_kep = %g e_kep = %g Porb = %g  phi = %g\n", g_index, E_kep, star[index].E, J_kep, a_kep, e_kep, Porb, star_phi[g_index]); 
-    // eprintf("index = %ld, rp = %g, rp_keplerian = %g t_to_rp = %g t_minus_tau = %g r = %g, cenma = %g \n", g_index, orbit_rs.rp, a_kep * (1. - e_kep), t_to_rp, t_minus_tau, star_r[g_index], cenma.m*madhoc);
-    // }
+        t_to_rp = t_minus_tau;
+        eprintf("gsl_integration_qa[g,w]s failed for rp (gsl_errno=%d, index=%d, g_index=%d, orbit_rs.rp=%e, orbit_rs.r=%e); check cmc_bhlosscone.c for [g,w] routine; returning t_minus_tau = %g \n", status, index, g_index, orbit_rs.rp,star_r[g_index], t_minus_tau);
+        // eprintf("index = %ld, Energy = %g E_step = %g \n", g_index, star[index].E, E_step);
+        // eprintf("index = %ld, rp = %g ra = %g r = %g \n", g_index, orbit_rs.rp, orbit_rs.ra, star_r[g_index]);
+        // eprintf("index = %ld, t_to_rp = %g t_minus_tau = %g Porb = %g \n", g_index, t_to_rp, t_minus_tau, Porb);
+        // eprintf("index = %ld, n = %g E = %g a_approx = %g e_approx = %g vr = %g \n", g_index, n, E, a_approx, e_approx, vr);
+    }
+
     // Reset to previous error handler  
     gsl_set_error_handler(old_handler);
     
@@ -832,7 +849,7 @@ struct Interval get_r_interval(double r) {
   return (star_interval);
 }
 
-int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3], double local_MBH_TDE_ACCRETION, double Rdisr, double rperi_kep, double E_kep, double J_kep, int r_disr_flag ){
+int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double t, double w[3], double local_MBH_TDE_ACCRETION, double Rdisr, double rperi, double E_step, double J_step, int r_disr_flag ){
     
     int mbhid=0,binid=0,sinid=0;
     /* One object -- either double TDE or the binary is unchanged 
@@ -930,7 +947,7 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
 
             /* Finally write to file */
             if(WRITE_BH_LOSSCONE_INFO){
-                parafprintf(bhlossconefile, "%g 1 Two-TDE %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_radc[1], binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                parafprintf(bhlossconefile, "%g 1 Two-TDE %g %g %ld %ld %g %g %g %g %g %g %ld %ld %g %g %g %g %g %g %g %g %g %d 0\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].id2, binary[star[index].binind].m1 * units.mstar / MSUN, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_radc[1], binary[star[index].binind].bse_kw[0], binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w[0], w[1], w[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
             }
             /* Destroy the binary and complete the random walk */
             destroy_obj(index);
@@ -1091,9 +1108,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                 /* Finally write to file */
                 if(WRITE_BH_LOSSCONE_INFO){
                     if(binid == 1){
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d 0\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w[0], w[1], w[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
                     }else{
-                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1],  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                        parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d 0\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1],  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w[0], w[1], w[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
                     }
                 }
                 /* Destroy the original binary */
@@ -1467,9 +1484,9 @@ int analyze_fewbody_output(fb_hier_t *hier, fb_ret_t *retval, long index, double
                     
                     if(WRITE_BH_LOSSCONE_INFO){
                         if(binid == 1){
-                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d 0\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id1, binary[star[index].binind].m1 * units.mstar / MSUN,  binary[star[index].binind].rad1 * units.l / RSUN, binary[star[index].binind].bse_radc[0], binary[star[index].binind].bse_kw[0], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w[0], w[1], w[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
                         }else{
-                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d \n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1],  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi_kep * units.l / RSUN, w[0], w[1], w[2], E_kep, J_kep, Rdisr * units.l / RSUN, r_disr_flag);
+                            parafprintf(bhlossconefile, "%g 1 One-TDE %g %g %ld -100 %g -100 %g -100 %g -100 %ld -100 %g %g %g %g %g %g %g %g %g %d 0\n", TotalTime, cenma.m * units.mstar / MSUN, star[index].r, binary[star[index].binind].id2, binary[star[index].binind].m2 * units.mstar / MSUN,  binary[star[index].binind].rad2 * units.l / RSUN, binary[star[index].binind].bse_radc[1],  binary[star[index].binind].bse_kw[1], binary[star[index].binind].a * units.l / AU, binary[star[index].binind].e, rperi * units.l / RSUN, w[0], w[1], w[2], E_step, J_step, Rdisr * units.l / RSUN, r_disr_flag);
                         }
                     }
                     /* Destroy the original binary */
